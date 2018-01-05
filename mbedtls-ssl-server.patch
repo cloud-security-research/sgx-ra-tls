@@ -1,0 +1,140 @@
+diff --git a/programs/ssl/ssl_server.c b/programs/ssl/ssl_server.c
+index fd54f17..9a2f1ea 100644
+--- a/programs/ssl/ssl_server.c
++++ b/programs/ssl/ssl_server.c
+@@ -73,13 +73,13 @@ int main( void )
+ #include "mbedtls/ssl_cache.h"
+ #endif
+ 
+-#define HTTP_RESPONSE \
+-    "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" \
+-    "<h2>mbed TLS Test Server</h2>\r\n" \
+-    "<p>Successful connection using: %s</p>\r\n"
+-
+ #define DEBUG_LEVEL 0
+ 
++#include <sgx_quote.h>
++
++#include "mbedtls-ra-attester.h"
++#include "ra-challenger.h"
++
+ static void my_debug( void *ctx, int level,
+                       const char *file, int line,
+                       const char *str )
+@@ -90,6 +90,8 @@ static void my_debug( void *ctx, int level,
+     fflush(  (FILE *) ctx  );
+ }
+ 
++extern struct ra_tls_options my_ra_tls_options;
++
+ int main( void )
+ {
+     int ret, len;
+@@ -119,54 +121,25 @@ int main( void )
+     mbedtls_entropy_init( &entropy );
+     mbedtls_ctr_drbg_init( &ctr_drbg );
+ 
+-#if defined(MBEDTLS_DEBUG_C)
+     mbedtls_debug_set_threshold( DEBUG_LEVEL );
+-#endif
+ 
+     /*
+-     * 1. Load the certificates and private RSA key
++     * 1. Generate the certificate and private RSA key
+      */
+-    mbedtls_printf( "\n  . Loading the server cert. and key..." );
++    mbedtls_printf( "\n  . Generating the server cert. and key..." );
+     fflush( stdout );
+ 
+-    /*
+-     * This demonstration program uses embedded test certificates.
+-     * Instead, you may want to use mbedtls_x509_crt_parse_file() to read the
+-     * server and CA certificates, as well as mbedtls_pk_parse_keyfile().
+-     */
+-    ret = mbedtls_x509_crt_parse( &srvcert, (const unsigned char *) mbedtls_test_srv_crt,
+-                          mbedtls_test_srv_crt_len );
+-    if( ret != 0 )
+-    {
+-        mbedtls_printf( " failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret );
+-        goto exit;
+-    }
+-
+-    ret = mbedtls_x509_crt_parse( &srvcert, (const unsigned char *) mbedtls_test_cas_pem,
+-                          mbedtls_test_cas_pem_len );
+-    if( ret != 0 )
+-    {
+-        mbedtls_printf( " failed\n  !  mbedtls_x509_crt_parse returned %d\n\n", ret );
+-        goto exit;
+-    }
+-
+-    ret =  mbedtls_pk_parse_key( &pkey, (const unsigned char *) mbedtls_test_srv_key,
+-                         mbedtls_test_srv_key_len, NULL, 0 );
+-    if( ret != 0 )
+-    {
+-        mbedtls_printf( " failed\n  !  mbedtls_pk_parse_key returned %d\n\n", ret );
+-        goto exit;
+-    }
++    mbedtls_create_key_and_x509(&pkey, &srvcert, &my_ra_tls_options);
+ 
+     mbedtls_printf( " ok\n" );
+ 
+     /*
+      * 2. Setup the listening TCP socket
+      */
+-    mbedtls_printf( "  . Bind on https://localhost:4433/ ..." );
++    mbedtls_printf( "  . Bind on https://localhost:11111/ ..." );
+     fflush( stdout );
+ 
+-    if( ( ret = mbedtls_net_bind( &listen_fd, NULL, "4433", MBEDTLS_NET_PROTO_TCP ) ) != 0 )
++    if( ( ret = mbedtls_net_bind( &listen_fd, "127.0.0.1", "11111", MBEDTLS_NET_PROTO_TCP ) ) != 0 )
+     {
+         mbedtls_printf( " failed\n  ! mbedtls_net_bind returned %d\n\n", ret );
+         goto exit;
+@@ -252,7 +225,10 @@ reset:
+     if( ( ret = mbedtls_net_accept( &listen_fd, &client_fd,
+                                     NULL, 0, NULL ) ) != 0 )
+     {
++        char errbuf[512];
++        mbedtls_strerror(ret, errbuf, sizeof(errbuf));
+         mbedtls_printf( " failed\n  ! mbedtls_net_accept returned %d\n\n", ret );
++        mbedtls_printf("%s\n", errbuf);
+         goto exit;
+     }
+ 
+@@ -326,8 +302,25 @@ reset:
+     mbedtls_printf( "  > Write to client:" );
+     fflush( stdout );
+ 
+-    len = sprintf( (char *) buf, HTTP_RESPONSE,
+-                   mbedtls_ssl_get_ciphersuite( &ssl ) );
++    sgx_quote_t quote;
++    get_quote_from_cert(srvcert.raw.p, srvcert.raw.len, &quote);
++    sgx_report_body_t* body = &quote.report_body;
++
++    char mrenclave_hex_str[SGX_HASH_SIZE * 2 + 1] = {0, };
++    char mrsigner_hex_str[SGX_HASH_SIZE * 2 + 1] = {0, };
++    for (int i = 0; i < SGX_HASH_SIZE; ++i) {
++        sprintf(&mrenclave_hex_str[i*2], "%02x", body->mr_enclave.m[i]);
++        sprintf(&mrsigner_hex_str[i*2], "%02x", body->mr_signer.m[i]);
++    }
++    
++    const char* http_response = "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n" \
++        "<h2>mbed TLS Test Server</h2>\r\n"                             \
++        "<p>Successful connection using: %s</br>\r\n"                   \
++        "MRENCLAVE is %s</br>\r\nMRSIGNER is %s</p>\r\n";
++
++    len = snprintf((char *) buf, sizeof (buf) - 1, http_response,
++                   mbedtls_ssl_get_ciphersuite(&ssl),
++                   mrenclave_hex_str, mrsigner_hex_str);
+ 
+     while( ( ret = mbedtls_ssl_write( &ssl, buf, len ) ) <= 0 )
+     {
+@@ -345,7 +338,7 @@ reset:
+     }
+ 
+     len = ret;
+-    mbedtls_printf( " %d bytes written\n\n%s\n", len, (char *) buf );
++    mbedtls_printf(" %d bytes written\n", len);
+ 
+     mbedtls_printf( "  . Closing the connection..." );
+ 

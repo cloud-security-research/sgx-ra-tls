@@ -1,0 +1,76 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <title></title>
+  <style type="text/css">code{white-space: pre;}</style>
+</head>
+<body>
+<h1 id="introduction">Introduction</h1>
+<p>This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying <a href="https://software.intel.com/en-us/sgx/resource-library">white paper</a> &quot;Integrating Remote Attestation with Transport Layer Security&quot; provides more details.</p>
+<h2 id="repository-structure">Repository Structure</h2>
+<p>The repository includes code to generate and parse extended X.509 certificates. The build system creates the following executables:</p>
+<ul>
+<li><p>Sample server (attester)</p>
+<ul>
+<li>using the SGX SDK based on <a href="deps/wolfssl-examples/SGX_Linux">wolfSSL</a></li>
+<li>using Graphene-SGX based on <a href="deps/wolfssl-examples/tls/server-tls.c">wolfSSL</a></li>
+<li>using Graphene-SGX based on <a href="deps/mbedtls/programs/ssl/ssl_server.c">mbedtls</a></li>
+</ul></li>
+<li><p>Non-SGX clients (challengers) based on different TLS libraries</p>
+<ul>
+<li><a href="mbedtls/programs/ssl/ssl_client1.c">mbedtls</a></li>
+<li><a href="deps/wolfssl-examples/tls/client-tls.c">wolfSSL</a></li>
+<li><a href="openssl-client.c">OpenSSL</a></li>
+</ul></li>
+</ul>
+<p>The code pertaining to the generation and parsing of extended X.509 certificates is located in the project's root directory.</p>
+<h2 id="code-structure">Code Structure</h2>
+<p>The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. We have implementations based on two different cryptographic libraries: wolfSSL (<a href="wolfssl-ra-challenger.c">challenger</a>, <a href="wolfssl-ra-attester.c">attester</a>) and mbedtls (<a href="mbedtls-ra-challenger.c">challenger</a>, <a href="mbedtls-ra-attester.c">attester</a>).</p>
+<p>The attester's code consists of <a href="sgxsdk-ra-attester_t.c">trusted</a> and <a href="sgxsdk-ra-attester_u.c">untrusted</a> SGX-SDK specific code to produce a quote using the SGX SDK. If the SGX SDK is not used, e.g., when using Graphene-SGX, there is code to <a href="nonsdk-ra-attester.c">obtain the SGX quote</a> by directly communicating with the platform's architectural enclave.</p>
+<p>Given a quote, there is <a href="ias-ra.c">code to obtain an attestation verification report</a> from the Intel Attestation Service. This code uses libcurl and OpenSSL.</p>
+<p><a href="deps/wolfssl-examples/SGX_Linux">An SGX SDK-based server</a> based on wolfSSL demonstrates how to use the <a href="ra-attester.h">public attester API</a>.</p>
+<p>We provide three non-SGX clients (<a href="mbedtls-client.c">mbedtls</a>, <a href="wolfssl-client.c">wolfSSL</a>, <a href="openssl-client.c">OpenSSL</a>) to show how seamless remote attestation works with different TLS libraries. They use the public <a href="ra-challenger.h">challenger's API</a>. In principle, the client may also run in an enclave, but we provide no code for this at the moment.</p>
+<h1 id="build">Build</h1>
+<h2 id="prerequisites">Prerequisites</h2>
+<p>The code is tested with the SGX SDK (v2.0), SGX driver (v2.0) and SGX PSW (v2.0) installed on the host. Results may vary with different versions. Follow the <a href="https://01.org/intel-software-guard-extensions/downloads">official instructions</a> to install the components and ensure they are working as intended. For Graphene-SGX, follow <a href="https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start">their instructions</a> to build and load the graphene-sgx kernel module.</p>
+<p><a href="https://software.intel.com/formfill/sgx-onboarding">Register a (self-signed) certificate</a> to be able to connect to Intel's Attestation Service (IAS). The registration process will also assign you a software provider ID (SPID). It is recommended to store the private key and certificate in the file ias-client-key.pem and ias-client-cert.pem in the project's root directory. Otherwise, the paths in ra_tls_options.c and ssl-server.manifest must be updated accordingly.</p>
+<p>In any case, you must update the SPID in <a href="ra_tls_options.c" class="uri">ra_tls_options.c</a> after registering with Intel.</p>
+<p><a href="build.sh">The tooling supports</a> building in your current environment and in a bare-bones container from scratch. The container install assumes you are executing as root and installs all necessary Ubuntu packages (tested with Ubuntu 16.04), the SGX SDK and SGX PSW, besides compiling the project dependencies and sources.</p>
+<p>Invoking build.sh without arguments builds for the current environment; with arguments (any) the script does a &quot;container build&quot;. The <a href="container-build.sh" class="uri">container-build.sh</a> script kicks off a container build based on the current checkout. You may want to change the proxy settings in the script to match your environment.</p>
+<h2 id="current-environment">Current Environment</h2>
+<p>This assumes you have all the dependencies etc (C/C++ toolchain, cmake, ...) installed. If in doubt, look into the <a href="build.sh">build script</a> which packages the container build installs. Install them manually.</p>
+<p>Build with</p>
+<pre><code>   ./build.sh</code></pre>
+<h2 id="in-a-docker-container">In a Docker container</h2>
+<p>To run the examples in a container, a working installation of the SGX SDK and Graphene-SGX are required on the host. In particular, the container needs access to</p>
+<pre><code>- /dev/isgx (SGX SDK)
+- /var/run/aesmd (SGX SDK)
+- /dev/gsgx (Graphene-SGX)</code></pre>
+<p>We pass these devices/directories through to the container.</p>
+<p>Start the container and map the SGX device and AESM socket into the container. We also map the project's source as read-only into the container.</p>
+<pre><code>   docker run --device=/dev/isgx --device=/dev/gsgx -v /var/run/aesmd:/var/run/aesmd -v[project root]:/root/project-ro:ro -it ubuntu:16.04 bash
+   </code></pre>
+<p>In the container, copy the project sources to a new directory with read/write permissisons and kick off the build process.</p>
+<pre><code>   cd ; cp -a ~/project-ro/ ~/project-rw ; cd ~/project-rw ; bash ./build.sh container</code></pre>
+<h1 id="run">Run</h1>
+<h2 id="the-sgx-sdk-server">The SGX SDK server</h2>
+<p>To start the wolfSSL-based SGX server run.</p>
+<pre><code>   ( cd deps/wolfssl-examples/SGX_Linux ; ./App -s )</code></pre>
+<p>With the server up and running, execute any of the <a href="#the-clients">clients</a>. If you are running in a container, you can get a 2nd console as follows.</p>
+<pre><code>   docker ps</code></pre>
+<p>Use the container's ID with the following command for a 2nd console.</p>
+<pre><code>   docker exec -ti --user root [container id] bash</code></pre>
+<h2 id="the-graphene-sgx-server">The Graphene-SGX server</h2>
+<p>First, start an socat instance to make AESM's named Unix socket accessible over TCP/IP.</p>
+<pre><code>   socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &amp;</code></pre>
+<p>Next, start the server application on Graphene-SGX</p>
+<pre><code>   SGX=1 ./deps/graphene/Runtime/pal_loader ./[binary]</code></pre>
+<p>where [binary] can be either mbedtls-ssl-server or wolfssl-ssl-server.</p>
+<h2 id="the-clients">The clients</h2>
+<p>Execute any one of ./[wolfssl|mbedtls|openssl]-client in the project's root directory.</p>
+<p>Each client outputs a bunch of connection-related information, such as the server's SGX identity (MRENCLAVE, MRSIGNER). You can cross-check this with what the server reports in his output.</p>
+</body>
+</html>

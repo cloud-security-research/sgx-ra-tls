@@ -1,0 +1,9 @@
+Integrating Intel SGX Remote Attestation with Transport Layer Security
+Copyright 2017 Intel(R) Corporation
+
+This software was developed at Intel Labs
+(https://www.intel.com/intellabs).  This software is a research proof
+of concept to demonstrate the integration of Intel SGX Remote
+Attestation with the Transport Layer Security protocol.
+
+This software not intended for production use.

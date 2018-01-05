@@ -1,0 +1,13 @@
+diff --git a/Pal/src/host/Linux-SGX/sgx_framework.c b/Pal/src/host/Linux-SGX/sgx_framework.c
+index c4ea9f0..c7b6ff8 100644
+--- a/Pal/src/host/Linux-SGX/sgx_framework.c
++++ b/Pal/src/host/Linux-SGX/sgx_framework.c
+@@ -345,7 +345,7 @@ int init_enclave(sgx_arch_secs_t * secs,
+             error = "Invalid measurement";        break;
+         case SGX_INVALID_SIGNATURE:
+             error = "Invalid signature";          break;
+-        case SGX_INVALID_LICENSE:
++        case SGX_INVALID_EINITTOKEN:
+             error = "Invalid EINIT token";        break;
+         case SGX_INVALID_CPUSVN:
+             error = "Invalid CPU SVN";            break;
