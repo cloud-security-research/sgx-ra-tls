@@ -9,7 +9,7 @@
 </head>
 <body>
 <h1 id="introduction">Introduction</h1>
-<p>This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying <a href="https://software.intel.com/en-us/sgx/resource-library">white paper</a> &quot;Integrating Remote Attestation with Transport Layer Security&quot; provides more details.</p>
+<p>This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying <a href="whitepaper.pdf">white paper</a> &quot;Integrating Remote Attestation with Transport Layer Security&quot; provides more details.</p>
 <h2 id="repository-structure">Repository Structure</h2>
 <p>The repository includes code to generate and parse extended X.509 certificates. The build system creates the following executables:</p>
 <ul>
