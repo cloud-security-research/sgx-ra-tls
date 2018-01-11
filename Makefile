@@ -29,9 +29,8 @@ wolfssl-client : deps/wolfssl-examples/tls/client-tls.c libwolfssl-ra-challenger
 mbedtls-client : deps/mbedtls/programs/ssl/ssl_client1.c libwolfssl-ra-challenger.a 
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) $(LDLIBS)
 
-openssl-client : openssl-client.c libwolfssl-ra-challenger.a
-	# Cannot use wolfSSL and OpenSSL in the same application. They export functions with identical names (e.g., i2d_X509() )
-	$(CC) -o $@ $< $(CFLAGS) -Ldeps/local/lib -L. -l:libwolfssl-ra-challenger.a -l:libwolfssl.a -lssl -lcrypto -lm
+openssl-client : openssl-client.c openssl-ra-challenger.c ra-challenger.c
+	$(CC) -o $@ $^ $(CFLAGS) -Ldeps/local/lib -lssl -lcrypto -lm
 
 libmbedtls-ra-challenger.a : mbedtls-ra-challenger.o ra-challenger.o
 	$(AR) rcs $@ $^
