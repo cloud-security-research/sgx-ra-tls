@@ -85,7 +85,7 @@ WOLFSSL_SSL_SERVER_SRC=deps/wolfssl-examples/tls/server-tls.c \
 	$(WOLFSSL_RA_ATTESTER_SRC) \
   $(NONSDK_RA_ATTESTER_SRC)
 
-WOLFSSL_SSL_SERVER_LIBS=-l:libcurl.a -l:libwolfssl.a -lcrypto -lprotobuf-c -lssl -lm -lz
+WOLFSSL_SSL_SERVER_LIBS=-l:libcurl.a -l:libwolfssl.a -lssl -lcrypto -lprotobuf-c -lm -lz
 
 wolfssl-ssl-server : $(WOLFSSL_SSL_SERVER_SRC) ssl-server.manifest
 	$(CC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib $(WOLFSSL_SSL_SERVER_SRC) $(WOLFSSL_SSL_SERVER_LIBS)
@@ -99,10 +99,23 @@ deps/wolfssl-examples/SGX_Linux/App : deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.
 README.html : README.md
 	pandoc --from markdown_github --to html --standalone $< --output $@
 
+SCONE_SSL_SERVER_INCLUDES=-I. -I/opt/intel/sgxsdk/include -ISCONE/deps/local/include \
+	-Ideps/linux-sgx/common/inc/internal \
+  -Ideps/linux-sgx/external/epid-sdk-3.0.0 \
+  -I$(SGX_GIT)/common/inc
+
+clients: mbedtls-client wolfssl-client openssl-client
+graphene-server: wolfssl-ssl-server mbedtls-ssl-server
+scone-server: scone-wolfssl-ssl-server
+sgxsdk-server: deps/wolfssl-examples/SGX_Linux/App
+
+scone-wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC)
+	/usr/local/bin/scone-gcc -o $@ $(CFLAGSERRORS) $(SCONE_SSL_SERVER_INCLUDES) -LSCONE/deps/local/lib $(WOLFSSL_SSL_SERVER_SRC) $(WOLFSSL_SSL_SERVER_LIBS)
+
 clean :
 	$(RM) *.o
 
 mrproper : clean
 	$(RM) $(EXECS) $(LIBS)
 
-.PHONY = all clean mrproper
+.PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper

@@ -2,38 +2,25 @@
 
 set -x
 
+function usage() {
+    echo "./build.sh [--prereq] sgxsdk|graphene|scone"
+}
+
 # You need the SGX SDK and PSW installed.
 
-container=$1
+if [[ $# -gt 2 || $# -eq 0 ]]; then
+    echo "wrong number of arguments"
+    usage
+    exit 1
+fi
 
-if  [ ! -z  "$container" ] ; then
-    # You may want to install the following packets (tested with Ubuntu 16.04)
+[[ $# -eq 1 ]] && VARIANT=$1
+[[ $# -eq 2 ]] && VARIANT=$2
 
-    # Install packets, SGX SDK and SGX PSW required to build everything.
-    apt-get update
-    apt-get install -y --no-install-recommends git wget openssh-client build-essential cmake libssl-dev libprotobuf-dev autoconf libtool libprotobuf-c-dev protobuf-c-compiler ca-certificates automake
-
-    # Graphene requirements
-    apt-get install -y --no-install-recommends python gawk python-protobuf python-crypto socat
-    
-    if [ ! -d /opt/intel/sgxsdk ] ; then
-        wget https://download.01.org/intel-sgx/linux-2.0/sgx_linux_ubuntu16.04.1_x64_sdk_2.0.100.40950.bin
-        printf 'no\n/opt/intel\n' | bash ./sgx_linux_ubuntu16.04.1_x64_sdk_2.0.100.40950.bin
-    fi
-
-    if [ ! -d /opt/intel/sgxpsw ] ; then
-        wget https://download.01.org/intel-sgx/linux-2.0/sgx_linux_ubuntu16.04.1_x64_psw_2.0.100.40950.bin
-        # The patch is necessary to allow the script to execute in a
-        # container. The patch allows the script to run to completion
-        # and install the necessary .so libraries.
-        patch -p0 sgx_linux_ubuntu16.04.1_x64_psw_2.0.100.40950.bin <<EOF
-43c43
-<             exit 4
----
->             #exit 4
-EOF
-        yes no /opt/intel | bash ./sgx_linux_ubuntu16.04.1_x64_psw_2.0.100.40950.bin
-    fi
+if [[ ! ( $VARIANT == "scone" || $VARIANT == "graphene" || $VARIANT == "sgxsdk" ) ]] ; then
+    echo "unknown variant; must be one of sgxsdk, graphene or scone."
+    usage
+    exit 1
 fi
 
 mkdir -p deps
@@ -43,8 +30,6 @@ pushd deps
 # clients. We do not use their package versions since we need them to
 # be compiled with specific flags.
 
-# patch mbedtls
-
 if [ ! -d mbedtls ] ; then
     git clone https://github.com/ARMmbed/mbedtls.git
     pushd mbedtls
@@ -53,9 +38,9 @@ if [ ! -d mbedtls ] ; then
     patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
     patch -p1 < ../../mbedtls-ssl-server.patch
     patch -p1 < ../../mbedtls-client.patch
-    cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS="-DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" .
-    make
-    cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake
+    cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_PROGRAMS=off -DCMAKE_C_FLAGS="-DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
+    make -j`nproc` || exit 1
+    cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
     popd
 fi
 
@@ -76,49 +61,51 @@ if [ ! -d wolfssl ] ; then
     # not seem to help in this case.
     WOLFSSL_CFLAGS="-DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
     CFLAGS="$WOLFSSL_CFLAGS" ./configure --prefix=$(readlink -f ../local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext || exit 1 # --enable-debug
+    make -j`nproc` || exit 1
     make install || exit 1
     # Add -DDEBUG_WOLFSSL to CFLAGS for debug
     pushd IDE/LINUX-SGX
-    make -f sgx_t_static.mk SGX_DEBUG=1 CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT"
+    make -f sgx_t_static.mk SGX_DEBUG=1 CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT" || exit 1
     cp libwolfssl.sgx.static.lib.a ../../../local/lib
     popd
     popd
 fi
 
-if [ ! -d curl ] ; then
+if [[ ! -d curl && "$VARIANT" != "scone" ]] ; then
     git clone https://github.com/curl/curl.git
     pushd curl
     git checkout curl-7_47_0
     ./buildconf
     ./configure --prefix=$(readlink -f ../local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --with-ssl # --enable-debug
-    make
-    make install
+    make -j`nproc` || exit 1
+    make install || exit 1
     popd
 fi
 
 # Linux SGX SDK code
-if [ ! -d linux-sgx ] ; then
+if [[ ! -d linux-sgx ]] ; then
     git clone https://github.com/01org/linux-sgx.git
     pushd linux-sgx
     git checkout sgx_2.0
     popd
 fi
 
-if [ ! -d linux-sgx-driver ] ; then
+if [[ ! -d linux-sgx-driver && $VARIANT == "graphene" ]] ; then
      git clone https://github.com/01org/linux-sgx-driver.git
      pushd linux-sgx-driver
      git checkout sgx_driver_2.0
      popd
 fi
 
-if [ ! -d graphene ] ; then
+if [[ ! -d graphene && $VARIANT == "graphene" ]] ; then
     git clone --recursive https://github.com/oscarlab/graphene.git
     pushd graphene
     git checkout 7807773a76c765d9e0839e30ba5f029dfcb3d0fb
     openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
     # patch -p1 < ../../graphene-sgx-linux-driver-2.1.patch
     # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
-    printf "$(readlink -f ../linux-sgx-driver)\n2.0\n" | make SGX=1
+    # Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
+    printf "$(readlink -f ../linux-sgx-driver)\n2.0\n" | make SGX=1 || exit 1
 
     # I prefer to have all dynamic libraries in one directory. This
     # reduces the effort in the Graphene-SGX manifest file.
@@ -137,14 +124,16 @@ popd # deps
 # Service
 # cp ../../certs/ias-client*.pem .
 
-echo "Building wolfSSL SGX library ..."
-make -f ratls-wolfssl.mk || exit 1
-make -f ratls-wolfssl.mk clean || exit 1
-
-echo "Building SGX-SDK-based wolfSSL sample server (HTTPS) ..."
+if [ $VARIANT == "sgxsdk" ] ; then
+    echo "Building wolfSSL SGX library ..."
+    make -f ratls-wolfssl.mk || exit 1
+    make -f ratls-wolfssl.mk clean || exit 1
+fi
 
 pushd deps
-if [ ! -d wolfssl-examples ] ; then
+if [[ ! -d wolfssl-examples ]] ; then
+    echo "Building SGX-SDK-based wolfSSL sample server (HTTPS) ..."
+    
     git clone https://github.com/wolfSSL/wolfssl-examples.git || exit 1
     pushd wolfssl-examples
     git checkout 94b94262b45d264a40d484060cee595b26bdbfd7
@@ -156,6 +145,14 @@ if [ ! -d wolfssl-examples ] ; then
 fi
 popd
 
-echo "Building non-SGX-SDK sample clients and servers ..."
-make || exit 1
+echo "Building non-SGX-SDK sample clients ..."
+make clients || exit 1
 make clean || exit
+
+if [ $VARIANT == "scone" ] ; then
+    bash ./build-SCONE.sh || exit 1
+    make scone-server || exit 1
+fi
+
+[ $VARIANT == "sgxsdk" ] && make sgxsdk-server
+[ $VARIANT == "graphene" ] && make graphene-server

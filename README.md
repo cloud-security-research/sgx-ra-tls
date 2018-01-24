@@ -9,12 +9,12 @@ The repository includes code to generate and parse extended X.509 certificates. 
 - Sample server (attester) 
 
     * using the SGX SDK based on [wolfSSL](deps/wolfssl-examples/SGX_Linux)
-    * using Graphene-SGX based on [wolfSSL](deps/wolfssl-examples/tls/server-tls.c)
-    * using Graphene-SGX based on [mbedtls](deps/mbedtls/programs/ssl/ssl_server.c)
+    * using [Graphene-SGX](https://github.com/oscarlab/graphene) or [SCONE](https://sconedocs.github.io) based on [wolfSSL](deps/wolfssl-examples/tls/server-tls.c)
+    * using [Graphene-SGX](https://github.com/oscarlab/graphene) or [SCONE](https://sconedocs.github.io) based on [mbedtls](deps/mbedtls/programs/ssl/ssl_server.c)
 
 - Non-SGX clients (challengers) based on different TLS libraries
 
-    * [mbedtls](mbedtls/programs/ssl/ssl_client1.c)
+    * [mbedtls](deps/mbedtls/programs/ssl/ssl_client1.c)
     * [wolfSSL](deps/wolfssl-examples/tls/client-tls.c)
     * [OpenSSL](openssl-client.c)
 
@@ -30,57 +30,55 @@ Given a quote, there is [code to obtain an attestation verification report](ias-
 
 [An SGX SDK-based server](deps/wolfssl-examples/SGX_Linux) based on wolfSSL demonstrates how to use the [public attester API](ra-attester.h).
 
-We provide three non-SGX clients ([mbedtls](mbedtls-client.c), [wolfSSL](wolfssl-client.c), [OpenSSL](openssl-client.c)) to show how seamless remote attestation works with different TLS libraries. They use the public [challenger's API](ra-challenger.h). In principle, the client may also run in an enclave, but we provide no code for this at the moment.
+We provide three non-SGX clients ([mbedtls](deps/mbedtls/programs/ssl/ssl_client1.c), [wolfSSL](deps/wolfssl-examples/tls/client-tls.c), [OpenSSL](openssl-client.c)) to show how seamless remote attestation works with different TLS libraries. They use the public [challenger's API](ra-challenger.h). In principle, the client may also run in an enclave, but we provide no code for this at the moment.
 
 # Build
 
+We have tested the code with enclaves created using the Intel SGX SDK, Graphene-SGX and SCONE.
+
 ## Prerequisites
 
-The code is tested with the SGX SDK (v2.0), SGX driver (v2.0) and SGX PSW (v2.0) installed on the host. Results may vary with different versions. Follow the [official instructions](https://01.org/intel-software-guard-extensions/downloads) to install the components and ensure they are working as intended. For Graphene-SGX, follow [their instructions](https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start) to build and load the graphene-sgx kernel module.
+The code is tested with the SGX SDK (v2.0), SGX driver (v2.0) and SGX PSW (v2.0) installed on the host. Results may vary with different versions. Follow the [official instructions](https://01.org/intel-software-guard-extensions/downloads) to install the components and ensure they are working as intended. For Graphene-SGX, follow [their instructions](https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start) to build and load the Graphene-SGX kernel module. Only the Graphene-SGX kernel module is required as a prerequisite. Graphene itself is built by the scripts.
 
 [Register a (self-signed) certificate](https://software.intel.com/formfill/sgx-onboarding) to be able to connect to Intel's Attestation Service (IAS). The registration process will also assign you a software provider ID (SPID). It is recommended to store the private key and certificate in the file ias-client-key.pem and ias-client-cert.pem in the project's root directory. Otherwise, the paths in ra_tls_options.c and ssl-server.manifest must be updated accordingly.
 
 In any case, you must update the SPID in [ra_tls_options.c](ra_tls_options.c) after registering with Intel.
 
-[The tooling supports](build.sh) building in your current environment and in a bare-bones container from scratch. The container install assumes you are executing as root and installs all necessary Ubuntu packages (tested with Ubuntu 16.04), the SGX SDK and SGX PSW, besides compiling the project dependencies and sources.
+We recommend building the code in a container. We provide a [Dockerfile](Dockerfile) to install all the required packages. If you prefer to build on your host system, the Dockerfile will guide you which packages and additional software to install. You can create an image based on the Dockerfile as such
 
-Invoking build.sh without arguments builds for the current environment; with arguments (any) the script does a "container build". The [container-build.sh](container-build.sh) script kicks off a container build based on the current checkout. You may want to change the proxy settings in the script to match your environment.
+    docker build -f ./Dockerfile -t ratls
 
-## Current Environment
+If you want to use SCONE and have access to their Docker images, edit the Dockerfile to use their image as the base instead of the default Ubuntu 16.04 (see first two lines of Dockerfile)
 
-This assumes you have all the dependencies etc (C/C++ toolchain, cmake, ...) installed. If in doubt, look into the [build script](build.sh) which packages the container build installs. Install them manually.
+    docker build -f ./Dockerfile -t ratls-scone
 
-Build with
+## Build instructions
 
-       ./build.sh
+The [build script](build.sh) creates executables based on either the Intel SGX SDK, Graphene-SGX or SCONE, depending on the first parameter
 
-## In a Docker container
+    ./build.sh sgxsdk|graphene|scone
 
-To run the examples in a container, a working installation of the SGX SDK and Graphene-SGX are required on the host. In particular, the container needs access to 
+To build in a container using the Docker image created earlier, execute the following command in the project's root directory
 
-    - /dev/isgx (SGX SDK)
-    - /var/run/aesmd (SGX SDK)
-    - /dev/gsgx (Graphene-SGX)
+    docker run --device=/dev/isgx --device=/dev/gsgx -v /var/run/aesmd:/var/run/aesmd \
+       -v$(pwd):/project -it [Docker image] bash
 
-We pass these devices/directories through to the container.
+where [Docker image] is the name of the Docker image we created earlier, i.e., either ratls or ratls-scone.
 
-Start the container and map the SGX device and AESM socket into the container. We also map the project's source as read-only into the container.
+In the running container, change the directory and kick-off the build process
 
-       docker run --device=/dev/isgx --device=/dev/gsgx -v /var/run/aesmd:/var/run/aesmd -v[project root]:/root/project-ro:ro -it ubuntu:16.04 bash
-       
-In the container, copy the project sources to a new directory with read/write permissisons and kick off the build process.
-
-       cd ; cp -a ~/project-ro/ ~/project-rw ; cd ~/project-rw ; bash ./build.sh container
+    cd /project
+    ./build.sh sgxsdk|graphene|scone
 
 # Run
 
-## The SGX SDK server
+## Intel SGX SDK based server
 
 To start the wolfSSL-based SGX server run.
 
        ( cd deps/wolfssl-examples/SGX_Linux ; ./App -s )
 
-With the server up and running, execute any of the [clients](#the-clients). If you are running in a container, you can get a 2nd console as follows.
+With the server up and running, execute any of the [clients](#the-clients). If you are running in a container, you can get a 2nd console as follows (or run the server in the background by appending & at the end of the above command).
 
        docker ps
 
@@ -88,7 +86,7 @@ Use the container's ID with the following command for a 2nd console.
 
        docker exec -ti --user root [container id] bash
 
-## The Graphene-SGX server
+## Graphene-SGX based server
 
 First, start an socat instance to make AESM's named Unix socket accessible over TCP/IP.
 
@@ -99,6 +97,16 @@ Next, start the server application on Graphene-SGX
        SGX=1 ./deps/graphene/Runtime/pal_loader ./[binary]
 
 where [binary] can be either mbedtls-ssl-server or wolfssl-ssl-server.
+
+## SCONE based server
+
+Similar to Graphene-SGX, we currently require an socat instance to communicate with AESM. In contrast to Graphene-SGX, SCONE should be able to talk to AESM's named socket directly, but we do not have an extra code path for SCONE.
+
+       socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &
+
+Next, execute the SCONE binary as such
+
+       ./scone-wolfssl-ssl-server
 
 ## The clients
 
