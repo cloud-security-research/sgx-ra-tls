@@ -20,6 +20,9 @@
 
 #include "ra-challenger_private.h"
 
+extern unsigned char ias_sign_ca_cert_der[];
+extern unsigned int ias_sign_ca_cert_der_len;
+
 static
 void extract_x509_extension
 (
@@ -240,8 +243,8 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
     mbedtls_x509_crt_init(&cacert);
     int ret;
     ret = mbedtls_x509_crt_parse(&cacert,
-                                 attn_report->ias_sign_ca_cert,
-                                 attn_report->ias_sign_ca_cert_len);
+                                 ias_sign_ca_cert_der,
+                                 ias_sign_ca_cert_der_len);
     assert(ret == 0);
 
     mbedtls_x509_crt cert;

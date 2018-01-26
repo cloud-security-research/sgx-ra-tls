@@ -29,13 +29,13 @@ wolfssl-client : deps/wolfssl-examples/tls/client-tls.c libwolfssl-ra-challenger
 mbedtls-client : deps/mbedtls/programs/ssl/ssl_client1.c libwolfssl-ra-challenger.a 
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS) $(LDLIBS)
 
-openssl-client : openssl-client.c openssl-ra-challenger.c ra-challenger.c
+openssl-client : openssl-client.c openssl-ra-challenger.c ra-challenger.c ias_sign_ca_cert.o
 	$(CC) -o $@ $^ $(CFLAGS) -Ldeps/local/lib -lssl -lcrypto -lm
 
-libmbedtls-ra-challenger.a : mbedtls-ra-challenger.o ra-challenger.o
+libmbedtls-ra-challenger.a : mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $^
 
-libwolfssl-ra-challenger.a : wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o
+libwolfssl-ra-challenger.a : wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $^
 
 libmbedtls-ra-attester.a : mbedtls-ra-attester.o ias-ra.o
@@ -51,7 +51,7 @@ CFLAGS+=-I$(SGX_GIT)/common/inc/internal -I$(EPID_SDK) -I$(SGX_GIT)/common/inc
 
 WOLFSSL_RA_ATTESTER_SRC=wolfssl-ra-attester.c wolfssl-ra.c
 MBEDTLS_RA_ATTESTER_SRC=mbedtls-ra-attester.c ra-challenger.c
-MBEDTLS_RA_CHALLENGER_SRC=mbedtls-ra-challenger.c
+MBEDTLS_RA_CHALLENGER_SRC=mbedtls-ra-challenger.c ias_sign_ca_cert.c
 NONSDK_RA_ATTESTER_SRC=ias-ra.c nonsdk-ra-attester.c messages.pb-c.c sgx_report.S
 
 messages.pb-c.c messages.pb-c.h :

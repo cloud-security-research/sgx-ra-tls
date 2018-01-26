@@ -14,6 +14,9 @@
 #include "ra-challenger.h"
 #include "ra-challenger_private.h"
 
+extern unsigned char ias_sign_ca_cert_der[];
+extern unsigned int ias_sign_ca_cert_der_len;
+
 /* EVP_DecodeBlock pads its output with \0 if the output length is not
    a multiple of 3. Check if the base64 string is padded at the end
    and adjust the output length. */
@@ -293,8 +296,8 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
     X509* crt = d2i_X509(NULL, &p, attn_report->ias_sign_cert_len);
     assert(crt != NULL);
 
-    p = attn_report->ias_sign_ca_cert;
-    X509* cacrt = d2i_X509(NULL, &p, attn_report->ias_sign_ca_cert_len);
+    p = ias_sign_ca_cert_der;
+    X509* cacrt = d2i_X509(NULL, &p, ias_sign_ca_cert_der_len);
     assert(crt != NULL);
 
     X509_STORE* s = X509_STORE_new();

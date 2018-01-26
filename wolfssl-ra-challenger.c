@@ -18,6 +18,9 @@
 #include "ra-challenger.h"
 #include "ra-challenger_private.h"
 
+extern unsigned char ias_sign_ca_cert_der[];
+extern unsigned int ias_sign_ca_cert_der_len;
+
 static
 void extract_x509_extension
 (
@@ -240,8 +243,8 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
     assert(cm != NULL);
 
     /* like load verify locations, 1 for success, < 0 for error */
-    int ret = wolfSSL_CertManagerLoadCABuffer(cm, attn_report->ias_sign_ca_cert,
-                                              attn_report->ias_sign_ca_cert_len,
+    int ret = wolfSSL_CertManagerLoadCABuffer(cm, ias_sign_ca_cert_der,
+                                              ias_sign_ca_cert_der_len,
                                               SSL_FILETYPE_ASN1);
     assert(ret == 1);
     
