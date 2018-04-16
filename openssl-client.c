@@ -7,9 +7,9 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 
-#include "ra-challenger.h"
+#include <getopt.h>
 
-#define HOST "127.0.0.1:11111"
+#include "ra-challenger.h"
 
 int verify_callback
 (
@@ -60,10 +60,45 @@ void print_sgx_crt_info(X509* crt) {
     printf("\n");
 }
 
+static char* host = (char*) "localhost";
+static int port = 443;
+
+static
+void parse_arguments(int argc, char** argv) {
+    static struct option opts[] = {
+        {"port", required_argument, 0, 'p'},
+        {"hostname/IP", required_argument, 0, 'h'}
+    };
+
+    while (1) {
+        int c;
+        int option_index = 0;
+
+        c = getopt_long(argc, argv, "p:h:", opts, &option_index);
+
+        /* Detect the end of the options. */
+        if (c == -1)
+            break;
+
+        switch (c) {
+        case 'p':
+            port = atoi(optarg);
+            break;
+        case 'h':
+            host = optarg;
+            break;
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     (void) argc;
     (void) argv;
+
+    int ret;
+    
+    parse_arguments(argc, argv);
     
     SSL_load_error_strings();
     ERR_load_crypto_strings();
@@ -82,7 +117,10 @@ int main(int argc, char **argv)
     BIO_get_ssl(bio, &ssl);
     SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
 
-    BIO_set_conn_hostname(bio, HOST":https");
+    char hostname[255];
+    ret = snprintf(hostname, sizeof(hostname), "%s:%d:https", host, port);
+    assert(ret > 0);
+    BIO_set_conn_hostname(bio, hostname);
 
     if (BIO_do_connect(bio) <= 0) {
         BIO_free_all(bio);
@@ -91,8 +129,21 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    const char *request = "GET / HTTP/1.0\r\n\r\n";
+    X509* crt = SSL_get_peer_certificate(ssl);
+    print_sgx_crt_info(crt);
+    
+    char request[1024] = {0, };
+    size_t len = 0;
 
+    int c;
+    while ((c = getchar()) != EOF) {
+        if (len >= sizeof(request)) {
+            fprintf(stderr, "Input too long\n");
+            assert(0);
+        }
+        request[len++] = (char) c;
+    }
+    
     if (BIO_puts(bio, request) <= 0) {
         BIO_free_all(bio);
         printf("errored; unable to write.\n");
@@ -100,23 +151,20 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    X509* crt = SSL_get_peer_certificate(ssl);
-    print_sgx_crt_info(crt);
-    
     char tmpbuf[1024+1];
 
     for (;;) {
-        int len = BIO_read(bio, tmpbuf, 1024);
-        if (len == 0) {
+        int ssllen = BIO_read(bio, tmpbuf, 1024);
+        if (ssllen == 0) {
             break;
-        } else if (len < 0) {
+        } else if (ssllen < 0) {
             if (!BIO_should_retry(bio)) {
                 printf("errored; read failed.\n");
                 ERR_print_errors_fp(stderr);
                 break;
             }
         } else {
-            tmpbuf[len] = 0;
+            tmpbuf[ssllen] = 0;
             printf("%s", tmpbuf);
         }
     }
