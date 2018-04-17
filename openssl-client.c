@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <openssl/ssl.h>
 #include <openssl/bio.h>
@@ -133,16 +134,12 @@ int main(int argc, char **argv)
     print_sgx_crt_info(crt);
     
     char request[1024] = {0, };
-    size_t len = 0;
+    strcpy(request, "GET / HTTP/1.1\r\n\r\n");
 
-    int c;
-    while ((c = getchar()) != EOF) {
-        if (len >= sizeof(request)) {
-            fprintf(stderr, "Input too long\n");
-            assert(0);
-        }
-        request[len++] = (char) c;
-    }
+    fcntl(0, F_SETFL, O_NONBLOCK);
+    ssize_t sz = read(0, request, sizeof(request));
+    assert(sz < (ssize_t) sizeof(request));
+    request[sz] = '\0';
     
     if (BIO_puts(bio, request) <= 0) {
         BIO_free_all(bio);

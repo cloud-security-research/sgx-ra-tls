@@ -34,9 +34,13 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 pushd $TEMP_DIR
 git clone $REPO_DIR
 cd $(basename $REPO_DIR)
-docker run --device=/dev/isgx --device=/dev/gsgx -v /var/run/aesmd:/var/run/aesmd \
+
+# --privileged=true is required for SGX-LKL only. The build process
+# for SGX-LKL wants to mount things, uses iptables, etc.
+
+docker run --device=/dev/isgx --device=/dev/gsgx \
+       --privileged=true \
+       -v /var/run/aesmd:/var/run/aesmd \
        -v$(pwd):/project \
-       -e https_proxy='https://proxy.jf.intel.com:912' \
-       -e http_proxy='http://proxy.jf.intel.com:911' \
        -it $IMAGE bash -c "cd /project $CMD"
 popd

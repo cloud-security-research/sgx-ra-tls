@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
+import os
 from subprocess import *
 from time import sleep
+from shlex import split
 import sys
 
 def sgx_sdk_test_cases() :
@@ -48,9 +50,41 @@ def graphene_sgx_test_cases():
             if server_process.poll() == None:
                 server_process.terminate()
 
+# This does not setup the iptable rules required for SGX-LKL to communicate with the outside world!
+def sgxlkl_test_case():
+    
+    socat_process = Popen("exec socat -t10 TCP-LISTEN:1234,bind=10.0.1.254,reuseaddr,fork,range=10.0.1.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket", shell=True)
+    sleep(1)
+    assert socat_process.poll() == None
+
+    try:
+        server_process = None
+        cmd = 'exec sgxlkl/sgx-lkl/build/sgx-lkl-run sgxlkl/sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img /sgxlkl-wolfssl-ssl-server'
+        env = dict(os.environ)
+        env.update({'SGXLKL_TAP' : 'sgxlkl_tap0',
+                    'SGXLKL_VERBOSE' : '1',
+                    'RATLS_AESMD_IP' : '10.0.1.254'})
+        print env
+        server_process = Popen(cmd, env=env, shell=True)
+        sleep(10)
+        assert server_process.poll() == None
+
+        check_call(split('./openssl-client -p 11111 -h 10.0.1.1'))
+
+        server_process.terminate()
+        sleep(1)
+        assert server_process.poll() != None
+        
+    finally:
+        socat_process.terminate()
+        if server_process != None:
+            if server_process.poll() == None:
+                server_process.terminate()
+
 def main() :
     sgx_sdk_test_cases()
     graphene_sgx_test_cases()
+    sgxlkl_test_case()
 
 if __name__ == '__main__':
     main()

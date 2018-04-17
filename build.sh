@@ -3,22 +3,24 @@
 set -x
 
 function usage() {
-    echo "./build.sh [--prereq] sgxsdk|graphene|scone"
+    echo "./build.sh sgxsdk|graphene|scone|sgxlkl"
 }
 
 # You need the SGX SDK and PSW installed.
 
-if [[ $# -gt 2 || $# -eq 0 ]]; then
+if [[ $# -gt 1 || $# -eq 0 ]]; then
     echo "wrong number of arguments"
     usage
     exit 1
 fi
 
 [[ $# -eq 1 ]] && VARIANT=$1
-[[ $# -eq 2 ]] && VARIANT=$2
 
-if [[ ! ( $VARIANT == "scone" || $VARIANT == "graphene" || $VARIANT == "sgxsdk" ) ]] ; then
-    echo "unknown variant; must be one of sgxsdk, graphene or scone."
+if [[ ! ( $VARIANT == "scone" ||
+                $VARIANT == "graphene" ||
+                $VARIANT == "sgxsdk" ||
+                $VARIANT == "sgxlkl" ) ]] ; then
+    echo "unknown variant; must be one of sgxsdk, graphene, scone or sgxlkl."
     usage
     exit 1
 fi
@@ -38,7 +40,7 @@ if [ ! -d mbedtls ] ; then
     patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
     patch -p1 < ../../mbedtls-ssl-server.patch
     patch -p1 < ../../mbedtls-client.patch
-    cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_PROGRAMS=off -DCMAKE_C_FLAGS="-DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
+    cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_PROGRAMS=off -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
     make -j`nproc` || exit 1
     cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
     popd
@@ -59,7 +61,7 @@ if [ ! -d wolfssl ] ; then
     # includes symbols that clash with OpenSSL, i.e., wolfSSL and OpenSSL
     # cannot be linked into the same binary. --enable-opensslcoexists does
     # not seem to help in this case.
-    WOLFSSL_CFLAGS="-DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
+    WOLFSSL_CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
     CFLAGS="$WOLFSSL_CFLAGS" ./configure --prefix=$(readlink -f ../local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext || exit 1 # --enable-debug
     make -j`nproc` || exit 1
     make install || exit 1
@@ -71,7 +73,7 @@ if [ ! -d wolfssl ] ; then
     popd
 fi
 
-if [[ ! -d curl && "$VARIANT" != "scone" ]] ; then
+if [[ ! -d curl && "$VARIANT" != "scone" && "$VARIANT" != "sgxlkl" ]] ; then
     git clone https://github.com/curl/curl.git
     pushd curl
     git checkout curl-7_47_0
@@ -152,6 +154,10 @@ make clean || exit
 if [ $VARIANT == "scone" ] ; then
     bash ./build-SCONE.sh || exit 1
     make scone-server || exit 1
+fi
+
+if [ $VARIANT == "sgxlkl" ] ; then
+    bash ./build-sgxlkl.sh || exit 1
 fi
 
 [ $VARIANT == "sgxsdk" ] && make sgxsdk-server
