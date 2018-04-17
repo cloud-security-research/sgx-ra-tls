@@ -246,13 +246,16 @@ int open_socket(void) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     assert(fd != -1);
 
-    /* struct sockaddr_un saddr = {AF_UNIX, "/var/aesm.socket"}; */
-
-    /* We assume the aesmd is reachable on 127.0.0.1:1234. You may have to run a socat instance on the host to achieve this:
-       socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket */
+    /* We assume the aesmd is reachable on 127.0.0.1:1234 by
+       default. You may have to run a socat instance on the host to
+       achieve this: socat -t10
+       TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8
+       UNIX-CLIENT:/var/run/aesmd/aesm.socket */
     struct sockaddr_in saddr;
     saddr.sin_family = AF_INET;
-    inet_pton(AF_INET, "127.0.0.1", &(saddr.sin_addr));
+    char* ip = getenv("RATLS_AESMD_IP");
+    if (ip == NULL) ip = (char*) "127.0.0.1";
+    inet_pton(AF_INET, ip, &(saddr.sin_addr));
     saddr.sin_port = htons(1234);
     
     int rc = connect(fd, (const struct sockaddr*) &saddr, sizeof(saddr));
