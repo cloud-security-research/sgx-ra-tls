@@ -7,7 +7,7 @@ from shlex import split
 import sys
 
 def sgx_sdk_test_cases() :
-    for client in ['mbedtls-client', 'wolfssl-client', 'openssl-client'] :
+    for client in ['mbedtls-client', 'wolfssl-client', 'openssl-client -p 11111'] :
         server_process = None
         try:
             server_process = Popen('exec ./App -s',
@@ -18,7 +18,7 @@ def sgx_sdk_test_cases() :
             # Verify server process started correctly.
             assert server_process.poll() == None
 
-            check_call("./"+client)
+            check_call(split("./"+client))
         finally:
             if server_process:
                 server_process.terminate()
@@ -38,8 +38,8 @@ def graphene_sgx_test_cases():
             sleep(10)
             assert server_process.poll() == None
 
-            for client in ['mbedtls-client', 'wolfssl-client', 'openssl-client'] :
-                check_call('./' + client)
+            for client in ['mbedtls-client', 'wolfssl-client', 'openssl-client -p 11111'] :
+                check_call(split('./' + client))
 
             server_process.terminate()
             sleep(1)
