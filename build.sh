@@ -102,7 +102,7 @@ fi
 if [[ ! -d graphene && $VARIANT == "graphene" ]] ; then
     git clone --recursive https://github.com/oscarlab/graphene.git
     pushd graphene
-    git checkout 7807773a76c765d9e0839e30ba5f029dfcb3d0fb
+    git checkout e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
     openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
     # patch -p1 < ../../graphene-sgx-linux-driver-2.1.patch
     # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
