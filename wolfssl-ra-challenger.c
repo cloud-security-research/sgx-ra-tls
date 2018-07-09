@@ -213,9 +213,10 @@ int verify_ias_report_signature
     assert(ret == 0);
 
     RsaKey rsaKey;
-    unsigned int idx;
+    unsigned int idx = 0;
     
-    wc_InitRsaKey(&rsaKey, NULL);
+    ret = wc_InitRsaKey(&rsaKey, NULL);
+    assert(ret == 0);
     ret = wc_RsaPublicKeyDecode(crt.publicKey, &idx, &rsaKey, crt.pubKeySize);
     assert(ret == 0);
 
