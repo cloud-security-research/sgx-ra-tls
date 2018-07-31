@@ -6,13 +6,6 @@ CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS+=$(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS+=-DSGX_GROUP_OUT_OF_DATE
 
-EXECS=mbedtls-ssl-server \
-	wolfssl-ssl-server \
-	mbedtls-client \
-	wolfssl-client \
-	openssl-client \
-  deps/wolfssl-examples/SGX_Linux/App
-
 LIBS=mbedtls/libra-attester.a \
 	mbedtls/libnonsdk-ra-attester.a \
 	mbedtls/libra-challenger.a \
@@ -21,7 +14,8 @@ LIBS=mbedtls/libra-attester.a \
 	wolfssl/libra-challenger.a \
 	openssl/libra-challenger.a
 
-all : $(EXECS) $(LIBS)
+.PHONY=all
+all: $(LIBS)
 
 wolfssl-client : deps/wolfssl-examples/tls/client-tls.c wolfssl/libra-challenger.a
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -Lwolfssl -Ldeps/local/lib -l:libra-challenger.a -l:libwolfssl.a -lm
@@ -89,7 +83,7 @@ MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
 	$(NONSDK_RA_ATTESTER_SRC)
 MBEDTLS_SSL_SERVER_LIBS=-l:libcurl.a -lcrypto -lprotobuf-c -lssl -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -lz
 
-mbedtls-ssl-server : $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest
+mbedtls-ssl-server : $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
 	$(CC) $(MBEDTLS_SSL_SERVER_SRC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib/ $(MBEDTLS_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -101,7 +95,7 @@ WOLFSSL_SSL_SERVER_SRC=deps/wolfssl-examples/tls/server-tls.c \
 
 WOLFSSL_SSL_SERVER_LIBS=-l:libcurl.a -l:libwolfssl.a -lssl -lcrypto -lprotobuf-c -lm -lz
 
-wolfssl-ssl-server : $(WOLFSSL_SSL_SERVER_SRC) ssl-server.manifest
+wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
 	$(CC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib -L. -Lwolfssl $(WOLFSSL_SSL_SERVER_SRC) -l:libra-challenger.a $(WOLFSSL_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -132,19 +126,22 @@ sgxsdk-server: deps/wolfssl-examples/SGX_Linux/App
 scone-wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC)
 	/usr/local/bin/scone-gcc -o $@ $(CFLAGSERRORS) $(SCONE_SSL_SERVER_INCLUDES) -LSCONE/deps/local/lib $(WOLFSSL_SSL_SERVER_SRC) $(WOLFSSL_SSL_SERVER_LIBS)
 
+# SGX-LKL requires position independent code (flags: -fPIE -pie) to
+# map the binary anywhere in the address space.
 sgxlkl-wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC)
-	sgxlkl/local/bin/musl-gcc -o $@ $(CFLAGSERRORS) $(SGXLKL_SSL_SERVER_INCLUDES) -Lsgxlkl/local/lib $(WOLFSSL_SSL_SERVER_SRC) wolfssl-ra-challenger.c ra-challenger.c ias_sign_ca_cert.c -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a
+	sgxlkl/local/bin/musl-gcc -o $@ -fPIE -pie $(CFLAGSERRORS) $(SGXLKL_SSL_SERVER_INCLUDES) -Lsgxlkl/local/lib $(WOLFSSL_SSL_SERVER_SRC) wolfssl-ra-challenger.c ra-challenger.c ias_sign_ca_cert.c -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a
 
 wolfssl/ldpreload.so : ldpreload.c
-	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lwolfssl -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl.a -l:libwolfssl.a -lssl -lcrypto -lprotobuf-c -lm -lz -ldl
+	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lwolfssl -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libm.a -l:libz.a -ldl
 
 mbedtls/ldpreload.so : ldpreload.c
 	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lmbedtls -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -lssl -lcrypto -lprotobuf-c -lm -lz -ldl
 
-clean :
+clean:
 	$(RM) *.o
 
-mrproper : clean
+mrproper: clean
 	$(RM) $(EXECS) $(LIBS)
+	$(RM) -r deps/curl deps/graphene deps/linux-sgx deps/linux-sgx-driver deps/mbedtls deps/wolfssl deps/wolfssl-examples
 
 .PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper
