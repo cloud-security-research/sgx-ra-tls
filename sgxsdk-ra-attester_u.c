@@ -24,7 +24,7 @@ void ocall_remote_attestation
     
     sgx_status_t status;
     status = sgx_get_quote(report,
-                           SGX_LINKABLE_SIGNATURE,
+                           opts->quote_type,
                            &opts->spid,
                            NULL,
                            NULL,
