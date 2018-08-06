@@ -18,6 +18,7 @@
 <li>using the SGX SDK based on <a href="deps/wolfssl-examples/SGX_Linux">wolfSSL</a></li>
 <li>using <a href="https://github.com/oscarlab/graphene">Graphene-SGX</a>, <a href="https://sconedocs.github.io">SCONE</a> or <a href="https://github.com/lsds/sgx-lkl">SGX-LKL</a> based on <a href="deps/wolfssl-examples/tls/server-tls.c">wolfSSL</a></li>
 <li>using <a href="https://github.com/oscarlab/graphene">Graphene-SGX</a> based on <a href="deps/mbedtls/programs/ssl/ssl_server.c">mbedtls</a></li>
+<li><a href="sgxlkl/python-https/https-server.py">Python-based HTTPS web server</a> running on SGX-LKL</li>
 </ul></li>
 <li><p>Non-SGX clients (challengers) based on different TLS libraries</p>
 <ul>
@@ -38,7 +39,7 @@
 <h2 id="prerequisites">Prerequisites</h2>
 <p>The code is tested with the SGX SDK (v2.0), SGX driver (v2.0) and SGX PSW (v2.0) installed on the host. Results may vary with different versions. Follow the <a href="https://01.org/intel-software-guard-extensions/downloads">official instructions</a> to install the components and ensure they are working as intended. For Graphene-SGX, follow <a href="https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start">their instructions</a> to build and load the Graphene-SGX kernel module. Only the Graphene-SGX kernel module is required as a prerequisite. Graphene itself is built by the scripts.</p>
 <p><a href="https://software.intel.com/formfill/sgx-onboarding">Register a (self-signed) certificate</a> to be able to connect to Intel's Attestation Service (IAS). The registration process will also assign you a software provider ID (SPID). It is recommended to store the private key and certificate in the file ias-client-key.pem and ias-client-cert.pem in the project's root directory. Otherwise, the paths in ra_tls_options.c, ssl-server.manifest and sgxlkl/ratls/Makefile must be updated accordingly.</p>
-<p>In any case, you must update the SPID in <a href="ra_tls_options.c" class="uri">ra_tls_options.c</a> after registering with Intel.</p>
+<p>In any case, you must update the SPID and quote type (linkable vs unlinkable) in <a href="ra_tls_options.c" class="uri">ra_tls_options.c</a> after registering with Intel.</p>
 <p>We support building the code in a Docker container. We provide a <a href="Dockerfile" class="uri">Dockerfile</a> to install all the required packages. If you prefer to build on your host system, the Dockerfile will guide you which packages and additional software to install. You can create an image based on the Dockerfile as such</p>
 <pre><code>docker build -t ratls .</code></pre>
 <p>If you want to use SCONE and have access to their Docker images, edit the Dockerfile to use their image as the base instead of the default Ubuntu 16.04 (see first two lines of Dockerfile)</p>
@@ -75,28 +76,21 @@
 <p>Next, execute the SCONE binary as such</p>
 <pre><code>./scone-wolfssl-ssl-server</code></pre>
 <h2 id="sgx-lkl">SGX-LKL</h2>
-<p>Set up the TAP device</p>
-<pre><code>sudo ip tuntap add dev sgxlkl_tap0 mode tap user `whoami`
-sudo ip link set dev sgxlkl_tap0 up
-sudo ip addr add dev sgxlkl_tap0 10.0.1.254/24</code></pre>
-<p>Set up iptable rules for the SGX-LKL application to be able to reach the Internet. Replace eth0 with whatever interface connects you to the outside.</p>
-<pre><code>sudo iptables -I FORWARD -i sgxlkl_tap0 -o eth0 -s 10.0.1.0/24 -m conntrack --ctstate NEW -j ACCEPT
-sudo iptables -I FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE</code></pre>
-<p>Start socat to make AESMD accessible over TCP/IP. Notice that we bind socat to the TAP interface's IP instead of the loopback as with Graphene-SGX and SCONE</p>
-<pre><code>socat -t10 TCP-LISTEN:1234,bind=10.0.1.254,reuseaddr,fork,range=10.0.1.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &amp;</code></pre>
-<p>Finally, start the application</p>
-<pre><code>SGXLKL_TAP=sgxlkl_tap0 SGXLKL_VERBOSE=1 RATLS_AESMD_IP=10.0.1.254 sgxlkl/sgx-lkl/build/sgx-lkl-run sgxlkl/sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img /sgxlkl-wolfssl-ssl-server</code></pre>
+<p>To set up the TAP device (used by SGX-LKL for networking), iptables (required for SGX-LKL to be able to reach the internet) and starts an socat daemon (to talk to the host's AESMD). EXTERNAL_INTERFACE specifies your &quot;external&quot; interface (typically eth0), i.e., the one which connects you to the internet.</p>
+<pre><code>EXTERNAL_IFACE=eth0 make -C sgxlkl up-sgxlkl-network</code></pre>
+<p>We provide two applications for SGX-LKL. First, a simple server based on wolfssl. This is similar to the examples provided for the other systems. Use Ctrl-C to stop the server.</p>
+<pre><code>make -C sgxlkl run-wolfssl-server</code></pre>
 <p>Use the openssl-client to connect to the server and print its SGX identity</p>
 <pre><code>echo -n hello | ./openssl-client -p 11111 -h 10.0.1.1</code></pre>
-<p>Cleanup</p>
-<pre><code>sudo iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
-sudo iptables -D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -D FORWARD -s 10.0.1.0/24 -i sgxlkl_tap0 -o eth0 -m conntrack --ctstate NEW -j ACCEPT
-sudo ip tuntap del dev sgxlkl_tap0 mode tap</code></pre>
+<p>Second, there is a <a href="sgxlkl/https-server/https-server.py">Python-based HTTPS server</a>. We preload (LD_PRELOAD) a library with the server. The <a href="sgxlkl/ldpreload.c">preloaded library's</a> initialization routine writes the key and certificate to /tmp/key and /tmp/crt, respectively. The server reads the RA-TLS key and certificate from the file system instead of calling the library directly.</p>
+<pre><code>make -C sgxlkl run-https-server</code></pre>
+<p>Warnings about LD_PRELOAD not being able to find /ldpreload.so can be ignored. LD_PRELOAD is also applied to the sgx-lkl-run binary, but ldpreload.so only exists within the LKL environment. The server listens on 10.0.1.1:4443. Using the RA-TLS-aware openssl-client you can connect to it as such</p>
+<pre><code>./openssl-client -p 4443 -h 10.0.1.1</code></pre>
+<p>To stop socat, remove iptable rules and the TAP interface issue</p>
+<pre><code>EXTERNAL_IFACE=eth0 make -C sgxlkl down-sgxlkl-network</code></pre>
 <h2 id="the-clients">The clients</h2>
 <p>Execute any one of ./[wolfssl|mbedtls|openssl]-client in the project's root directory.</p>
 <p>The openssl-client is most versatile as it allows to specify the IP and port to connect to via command line parameters.</p>
-<p>Each client outputs a bunch of connection-related information, such as the server's SGX identity (MRENCLAVE, MRSIGNER). You can cross-check this with what the server reports in his output.</p>
+<p>Each client outputs a bunch of connection-related information, such as the server's SGX identity (MRENCLAVE, MRSIGNER). You can cross-check this with what the server reports in its output.</p>
 </body>
 </html>
