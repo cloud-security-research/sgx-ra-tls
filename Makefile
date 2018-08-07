@@ -11,7 +11,7 @@ LIBS=mbedtls/libra-attester.a \
 	mbedtls/libra-challenger.a \
 	wolfssl/libra-challenger.a \
 	wolfssl/libnonsdk-ra-attester.a \
-	wolfssl/libra-challenger.a \
+	wolfssl/libra-attester.a \
 	openssl/libra-challenger.a
 
 .PHONY=all
