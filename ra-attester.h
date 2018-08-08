@@ -5,6 +5,7 @@
 
 struct ra_tls_options {
     sgx_spid_t spid;
+    sgx_quote_sign_type_t quote_type;
     /* \0 terminated file name; libcurl, used to interact with IAS,
        basically expects a file name. It is super-complicated to pass
        a memory buffer with the certificate and key to it. */

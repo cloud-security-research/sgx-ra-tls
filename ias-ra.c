@@ -6,8 +6,6 @@
 #include <string.h>
 #include <curl/curl.h>
 
-#include <openssl/evp.h> // for base64 encode/decode
-
 #include <stdint.h>
 
 #include <sgx_report.h>
@@ -15,6 +13,41 @@
 #include "ra.h"
 #include "ra-attester.h"
 #include "ias-ra.h"
+
+/* We define EVP_EncodeBlock() from LibreSSL here to decouple from ssl lib.
+ * Adopted from libressl/src/crypto/evp/encode.c and renamed to encodeBlock.
+ * Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com). */
+#define conv_bin2ascii(a)   (data_bin2ascii[(a)&0x3f])
+static const unsigned char data_bin2ascii[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+abcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static int encodeBlock(unsigned char *t, const unsigned char *f, int dlen) {
+    int i, ret = 0;
+    unsigned long l;
+
+    for (i = dlen; i > 0; i -= 3) {
+        if (i >= 3) {
+            l = (((unsigned long)f[0]) << 16L) |
+                (((unsigned long)f[1]) << 8L) | f[2];
+            *(t++) = conv_bin2ascii(l >> 18L);
+            *(t++) = conv_bin2ascii(l >> 12L);
+            *(t++) = conv_bin2ascii(l >> 6L);
+            *(t++) = conv_bin2ascii(l     );
+        } else {
+            l = ((unsigned long)f[0]) << 16L;
+            if (i == 2)
+                l |= ((unsigned long)f[1] << 8L);
+            *(t++) = conv_bin2ascii(l >> 18L);
+            *(t++) = conv_bin2ascii(l >> 12L);
+            *(t++) = (i == 1) ? '=' : conv_bin2ascii(l >> 6L);
+            *(t++) = '=';
+        }
+        ret += 4;
+        f += 3;
+    }
+    *t = '\0';
+    return (ret);
+}
 
 struct buffer_and_size {
     char* data;
@@ -27,7 +60,7 @@ size_t accumulate_function(void *ptr, size_t size, size_t nmemb, void *userdata)
     assert(s->data != NULL);
     memcpy(s->data + s->len, ptr, size * nmemb);
     s->len += size * nmemb;
-    
+
     return size * nmemb;
 }
 
@@ -48,7 +81,7 @@ void pem_to_base64_der(
     assert(strncmp((char*) pem, pem_marker_begin, strlen(pem_marker_begin)) == 0);
     assert(strncmp((char*) pem + pem_len - strlen(pem_marker_end),
                    pem_marker_end, strlen(pem_marker_end)) == 0);
-    
+
     uint32_t out_len = 0;
     const char* p = pem + strlen(pem_marker_begin);
     for (uint32_t i = 0;
@@ -92,7 +125,7 @@ void extract_certificates_from_response_header
                                          field_begin,
                                          field_len,
                                          &unescaped_len);
-    
+
     char* cert_begin = memmem(unescaped,
                               unescaped_len,
                               pem_marker_begin,
@@ -111,7 +144,7 @@ void extract_certificates_from_response_header
                       (char*) attn_report->ias_sign_cert,
                       &attn_report->ias_sign_cert_len,
                       sizeof(attn_report->ias_sign_cert));
-    
+
     cert_begin = memmem(cert_end,
                         unescaped_len - (cert_end - unescaped),
                         pem_marker_begin,
@@ -177,7 +210,7 @@ void obtain_attestation_verification_report
     CURL *curl;
     CURLcode res;
     int ret;
-  
+
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     curl = curl_easy_init();
@@ -194,7 +227,7 @@ void obtain_attestation_verification_report
         curl_easy_setopt(curl, CURLOPT_SSLKEY, opts->ias_key_file);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    
+
         struct curl_slist *headers = NULL;
         headers = curl_slist_append(headers, "Content-Type: application/json");
 
@@ -202,18 +235,18 @@ void obtain_attestation_verification_report
         unsigned char quote_base64[quote_size * 2];
         char json[quote_size * 2];
 
-        ret = EVP_EncodeBlock(quote_base64, (unsigned char*) quote, quote_size);
-         // +1 since EVP_EncodeBlock() adds \0 to the output.
+        ret = encodeBlock(quote_base64, (unsigned char*) quote, quote_size);
+         // +1 since encodeBlock() adds \0 to the output.
         assert((size_t) ret + 1 <= sizeof(quote_base64));
 
         snprintf(json, sizeof(json), json_template, quote_base64);
-    
+
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json);
 
         struct buffer_and_size header = {(char*) malloc(1), 0};
         struct buffer_and_size body = {(char*) malloc(1), 0};
-    
+
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, accumulate_function);
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, accumulate_function);
@@ -224,7 +257,7 @@ void obtain_attestation_verification_report
         if (res != 0) {
             printf("curl_easy_perform= %d\n", res);
         }
-        
+
         /* printf("%s", header.data); */
         /* printf("body= %s", body.data); */
 
@@ -232,11 +265,11 @@ void obtain_attestation_verification_report
                               attn_report->ias_report_signature,
                               sizeof(attn_report->ias_report_signature),
                               &attn_report->ias_report_signature_len);
-
-        const int body_base64_size = (body.len + (3 - body.len % 3)) / 3 * 4;
-         // +1 since EVP_EncodeBlock() puts a \0 at the end ...
+        const int body_base64_size = (body.len % 3 == 0) ? body.len / 3 * 4 :
+            (body.len + (3 - body.len % 3)) / 3 * 4;
+         // +1 since encodeBlock() puts a \0 at the end ...
         assert(sizeof(attn_report->ias_report) >= (size_t) body_base64_size + 1);
-        ret = EVP_EncodeBlock(attn_report->ias_report,
+        ret = encodeBlock(attn_report->ias_report,
                               (unsigned char*) body.data, body.len);
          // Here we ignore the trailing \0
         attn_report->ias_report_len = body_base64_size;
@@ -244,7 +277,7 @@ void obtain_attestation_verification_report
         extract_certificates_from_response_header(curl,
                                                   header.data, header.len,
                                                   attn_report);
-    
+
         /* Check for errors */
         if(res != CURLE_OK)
             fprintf(stderr, "curl_easy_perform() failed: %s\n",

@@ -28,11 +28,49 @@ fi
 mkdir -p deps
 pushd deps
 
-# The wolfSSL and mbedtls libraries are necessary for the non-SGX
+# SGX-LKL requires specific version of musl.
+# NOTE: Binaries built with glibc are not compatible with musl;
+#       one must be careful to not mix libraries/programs built with
+#       glibc (e.g. for Graphene-SGX) and with musl (e.g. for SGX-LKL).
+
+if [[ ! -d musl-1.1.19 && $VARIANT == "sgxlkl" ]] ; then
+    wget https://git.musl-libc.org/cgit/musl/snapshot/musl-1.1.19.tar.gz
+    tar xfz musl-1.1.19.tar.gz
+    pushd musl-1.1.19
+    ./configure --prefix=$(readlink -f ../local)
+    make -j8
+    make install
+    popd
+fi
+
+# Choose compiler to build deps (its own for SCONE, previously built musl
+# for SGX-LKL, and default gcc for Graphene and SGX-SDK).
+# Note that musl above must be built with default gcc.
+
+if [[ ( $VARIANT == "graphene" || $VARIANT == "sgxsdk" ) ]] ; then
+    export CC=gcc
+elif [[ $VARIANT == "scone" ]] ; then
+    export CC=/usr/local/bin/scone-gcc
+elif [[ $VARIANT == "sgxlkl" ]] ; then
+    export CC=$(readlink -f local/bin/musl-gcc)
+fi
+
+# The OpenSSL, wolfSSL, mbedtls libraries are necessary for the non-SGX
 # clients. We do not use their package versions since we need them to
 # be compiled with specific flags.
 
-if [ ! -d mbedtls ] ; then
+if [[ ! -d openssl ]] ; then
+    git clone https://github.com/openssl/openssl.git
+    pushd openssl
+    git checkout OpenSSL_1_0_2g
+    make clean
+    ./config --prefix=$(readlink -f ../local) no-shared -fPIC
+    make -j8
+    make install
+    popd
+fi
+
+if [[ ! -d mbedtls ]] ; then
     git clone https://github.com/ARMmbed/mbedtls.git
     pushd mbedtls
     git checkout mbedtls-2.5.1
@@ -40,13 +78,13 @@ if [ ! -d mbedtls ] ; then
     patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
     patch -p1 < ../../mbedtls-ssl-server.patch
     patch -p1 < ../../mbedtls-client.patch
-    cmake -DCMAKE_BUILD_TYPE=Debug -DENABLE_PROGRAMS=off -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
+    cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$CC -DCMAKE_C_FLAGS="-fPIC -O2 -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
     make -j`nproc` || exit 1
     cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
     popd
 fi
 
-if [ ! -d wolfssl ] ; then
+if [[ ! -d wolfssl ]] ; then
     git clone https://github.com/wolfSSL/wolfssl || exit 1
     pushd wolfssl
     git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
@@ -61,26 +99,65 @@ if [ ! -d wolfssl ] ; then
     # includes symbols that clash with OpenSSL, i.e., wolfSSL and OpenSSL
     # cannot be linked into the same binary. --enable-opensslcoexists does
     # not seem to help in this case.
-    WOLFSSL_CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
-    CFLAGS="$WOLFSSL_CFLAGS" ./configure --prefix=$(readlink -f ../local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext || exit 1 # --enable-debug
+    WOLFSSL_CFLAGS="-fPIC -O2 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
+    CFLAGS="$WOLFSSL_CFLAGS" ./configure --prefix=$(readlink -f ../local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --enable-tlsv10 || exit 1 # --enable-debug
     make -j`nproc` || exit 1
     make install || exit 1
-    # Add -DDEBUG_WOLFSSL to CFLAGS for debug
     pushd IDE/LINUX-SGX
-    make -f sgx_t_static.mk SGX_DEBUG=1 CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT" || exit 1
+    # Add SGX_DEBUG=1 for debug
+    make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT" || exit 1
     cp libwolfssl.sgx.static.lib.a ../../../local/lib
     popd
     popd
 fi
 
-if [[ ! -d curl && "$VARIANT" != "scone" && "$VARIANT" != "sgxlkl" ]] ; then
+if [[ ! -d zlib ]] ; then
+    git clone https://github.com/madler/zlib.git
+    pushd zlib
+    CFLAGS="-fPIC -O2" ./configure --prefix=$(readlink -f ../local) --static
+    make install
+    popd
+fi
+
+if [[ ! -d protobuf-c ]] ; then
+    git clone https://github.com/protobuf-c/protobuf-c.git
+    pushd protobuf-c
+    ./autogen.sh
+    CFLAGS="-fPIC -O2" ./configure --prefix=$(readlink -f ../local) --disable-shared
+    make protobuf-c/libprotobuf-c.la
+    cp protobuf-c/.libs/libprotobuf-c.a ../local/lib
+    mkdir ../local/include/protobuf-c
+    cp protobuf-c/protobuf-c.h ../local/include/protobuf-c
+    popd
+fi
+
+# Generate three versions of curl: dependent on OpenSSL, on mbedTLS, or on WolfSSL
+
+if [[ ! -d curl ]] ; then
     git clone https://github.com/curl/curl.git
     pushd curl
     git checkout curl-7_47_0
     ./buildconf
-    ./configure --prefix=$(readlink -f ../local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --with-ssl # --enable-debug
+    CONFIGUREFLAGS=" --prefix=$(readlink -f ../local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --disable-shared"
+    # CONFIGUREFLAGS+=" --enable-debug"
+
+    CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $CONFIGUREFLAGS --with-ssl=$(readlink -f ../local)
     make -j`nproc` || exit 1
     make install || exit 1
+    rename 's/libcurl/libcurl-openssl/' ../local/lib/libcurl.*
+
+    make clean
+    CFLAGS="-fPIC -O2" ./configure $CONFIGUREFLAGS --without-ssl --with-mbedtls=$(readlink -f ../local)
+    make -j`nproc` || exit 1
+    make install || exit 1
+    rename 's/libcurl/libcurl-mbedtls/' ../local/lib/libcurl.*
+
+    make clean
+    CFLAGS="-fPIC -O2" ./configure $CONFIGUREFLAGS --without-ssl --with-cyassl==$(readlink -f ../local)
+    make -j`nproc` || exit 1
+    make install || exit 1
+    rename 's/libcurl/libcurl-wolfssl/' ../local/lib/libcurl.*
+
     popd
 fi
 
@@ -120,6 +197,12 @@ if [[ ! -d graphene && $VARIANT == "graphene" ]] ; then
     popd
 fi
 
+if [[ ! -d sgx-lkl && $VARIANT == "sgxlkl" ]] ; then
+    git clone https://github.com/lsds/sgx-lkl.git || exit 1
+    ( cd sgx-lkl ; make )
+    cp -a ../sgxlkl/ratls sgx-lkl/apps
+fi
+
 popd # deps
 
 # Copy client certificates required to talk to Intel's Attestation
@@ -149,16 +232,16 @@ popd
 
 echo "Building non-SGX-SDK sample clients ..."
 make clients || exit 1
-make clean || exit
+make clean || exit 1
 
-if [ $VARIANT == "scone" ] ; then
-    bash ./build-SCONE.sh || exit 1
-    make scone-server || exit 1
-fi
-
-if [ $VARIANT == "sgxlkl" ] ; then
-    bash ./build-sgxlkl.sh || exit 1
-fi
-
+[ $VARIANT == "sgxlkl" ] && make sgxlkl-wolfssl-ssl-server
+[ $VARIANT == "scone" ] && make scone-server
 [ $VARIANT == "sgxsdk" ] && make sgxsdk-server
 [ $VARIANT == "graphene" ] && make graphene-server
+
+if [ $VARIANT == "sgxlkl" ] ; then
+    # USER=`whoami` is required only within Docker containers. SGX-LKL's
+    # Makefile uses the variable, but it's not typically set in a Docker
+    # container.
+    ( cd deps/sgx-lkl/apps/ratls && USER=`whoami` make )
+fi

@@ -316,13 +316,8 @@ void do_remote_attestation
     sgx_quote_t* quote = alloc_quote(&quote_size);
     assert(quote != NULL);
 
-    static sgx_spid_t spid = {{0x89, 0x93, 0x8E, 0xF5,
-                               0x5B, 0x8E, 0xB8, 0x50,
-                               0x19, 0x72, 0xC5, 0xC1,
-                               0xB7, 0x6D, 0xC8, 0xC8}};
-
-    get_quote(spid,
-              SGX_LINKABLE_SIGNATURE,
+    get_quote(opts->spid,
+              opts->quote_type,
               report_data,
               quote,
               quote_size);
