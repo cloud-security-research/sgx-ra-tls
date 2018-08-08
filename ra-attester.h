@@ -25,4 +25,12 @@ void create_key_and_x509
     const struct ra_tls_options* opts
 );
 
+void create_key_and_x509_pem
+(
+    uint8_t* pem_key,
+    int* pem_key_len,
+    uint8_t* pem_cert,
+    int* pem_cert_len,
+    const struct ra_tls_options* opts
+);
 #endif
