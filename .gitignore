@@ -61,6 +61,8 @@ openssl-client
 wolfssl-client
 wolfssl-ssl-server
 sgxlkl-wolfssl-ssl-server
+wolfssl-ssl-server-mutual
+wolfssl-client-mutual
 
 # Graphene-SGX
 *.sig
