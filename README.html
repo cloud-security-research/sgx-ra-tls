@@ -11,14 +11,14 @@
 <h1 id="introduction">Introduction</h1>
 <p>This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying <a href="whitepaper.pdf">white paper</a> &quot;Integrating Remote Attestation with Transport Layer Security&quot; provides more details.</p>
 <h2 id="repository-structure">Repository Structure</h2>
-<p>The repository includes code to generate and parse extended X.509 certificates. The build system creates the following executables:</p>
+<p>The repository root directory contains code to generate and parse extended X.509 certificates. The build system creates the following executables:</p>
 <ul>
 <li><p>Sample server (attester)</p>
 <ul>
 <li>using the SGX SDK based on <a href="deps/wolfssl-examples/SGX_Linux">wolfSSL</a></li>
 <li>using <a href="https://github.com/oscarlab/graphene">Graphene-SGX</a>, <a href="https://sconedocs.github.io">SCONE</a> or <a href="https://github.com/lsds/sgx-lkl">SGX-LKL</a> based on <a href="deps/wolfssl-examples/tls/server-tls.c">wolfSSL</a></li>
 <li>using <a href="https://github.com/oscarlab/graphene">Graphene-SGX</a> based on <a href="deps/mbedtls/programs/ssl/ssl_server.c">mbedtls</a></li>
-<li><a href="sgxlkl/python-https/https-server.py">Python-based HTTPS web server</a> running on SGX-LKL</li>
+<li><a href="sgxlkl/https-server/https-server.py">Python-based HTTPS web server</a> running on SGX-LKL</li>
 </ul></li>
 <li><p>Non-SGX clients (challengers) based on different TLS libraries</p>
 <ul>
@@ -26,14 +26,19 @@
 <li><a href="deps/wolfssl-examples/tls/client-tls.c">wolfSSL</a></li>
 <li><a href="openssl-client.c">OpenSSL</a></li>
 </ul></li>
+<li><p>Graphene-SGX client and server doing mutual attestation</p>
+<ul>
+<li><a href="deps/wolfssl-examples/tls/server-tls.c">server-tls.c</a></li>
+<li><a href="deps/wolfssl-examples/tls/client-tls.c">client-tls.c</a></li>
+</ul></li>
 </ul>
-<p>The code pertaining to the generation and parsing of extended X.509 certificates is located in the project's root directory.</p>
+<p>Some files may only exist after building the sources.</p>
 <h2 id="code-structure">Code Structure</h2>
-<p>The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. We have implementations based on two different cryptographic libraries: wolfSSL (<a href="wolfssl-ra-challenger.c">challenger</a>, <a href="wolfssl-ra-attester.c">attester</a>) and mbedtls (<a href="mbedtls-ra-challenger.c">challenger</a>, <a href="mbedtls-ra-attester.c">attester</a>).</p>
+<p>The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. We implemented the challenger and attester using two different cryptographic libraries: wolfSSL (<a href="wolfssl-ra-challenger.c">challenger</a>, <a href="wolfssl-ra-attester.c">attester</a>) and mbedtls (<a href="mbedtls-ra-challenger.c">challenger</a>, <a href="mbedtls-ra-attester.c">attester</a>). We also provide an (OpenSSL-based challenger)[openssl-ra-challenger.c], but no attester. Note that the attester must communicate with the Intel Attestation Service and currently depends on OpenSSL to do this.</p>
 <p>The attester's code consists of <a href="sgxsdk-ra-attester_t.c">trusted</a> and <a href="sgxsdk-ra-attester_u.c">untrusted</a> SGX-SDK specific code to produce a quote using the SGX SDK. If the SGX SDK is not used, e.g., when using Graphene-SGX, there is code to <a href="nonsdk-ra-attester.c">obtain the SGX quote</a> by directly communicating with the platform's architectural enclave.</p>
 <p>Given a quote, there is <a href="ias-ra.c">code to obtain an attestation verification report</a> from the Intel Attestation Service. This code uses libcurl and OpenSSL.</p>
 <p><a href="deps/wolfssl-examples/SGX_Linux">An SGX SDK-based server</a> based on wolfSSL demonstrates how to use the <a href="ra-attester.h">public attester API</a>.</p>
-<p>We provide three non-SGX clients (<a href="deps/mbedtls/programs/ssl/ssl_client1.c">mbedtls</a>, <a href="deps/wolfssl-examples/tls/client-tls.c">wolfSSL</a>, <a href="openssl-client.c">OpenSSL</a>) to show how seamless remote attestation works with different TLS libraries. They use the public <a href="ra-challenger.h">challenger's API</a>. In principle, the client may also run in an enclave, but we provide no code for this at the moment.</p>
+<p>We provide three non-SGX clients (<a href="deps/mbedtls/programs/ssl/ssl_client1.c">mbedtls</a>, <a href="deps/wolfssl-examples/tls/client-tls.c">wolfSSL</a>, <a href="openssl-client.c">OpenSSL</a>) to show how seamless remote attestation works with different TLS libraries. They use the public <a href="ra-challenger.h">challenger's API</a>. There is one SGX client demonstrating mutual authentication (code: <a href="deps/wolfssl-examples/tls/client-tls.c">client-tls.c</a>, binary: wolfssl-client-mutual).</p>
 <h1 id="build">Build</h1>
 <p>We have tested the code with enclaves created using the Intel SGX SDK, Graphene-SGX, SCONE and SGX-LKL.</p>
 <h2 id="prerequisites">Prerequisites</h2>
@@ -69,7 +74,7 @@
 <pre><code>socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &amp;</code></pre>
 <p>Next, start the server application on Graphene-SGX</p>
 <pre><code>SGX=1 ./deps/graphene/Runtime/pal_loader ./[binary]</code></pre>
-<p>where [binary] can be either mbedtls-ssl-server or wolfssl-ssl-server.</p>
+<p>where [binary] can be mbedtls-ssl-server, wolfssl-ssl-server or wolfssl-ssl-server-mutual.</p>
 <h2 id="scone">SCONE</h2>
 <p>Similar to Graphene-SGX, we use socat to make AESM accessible over TCP/IP. SCONE can in principle to talk to AESM's named Unix socket directly, but support for this is currently not implemented.</p>
 <pre><code>socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &amp;</code></pre>
@@ -89,8 +94,12 @@
 <p>To stop socat, remove iptable rules and the TAP interface issue</p>
 <pre><code>EXTERNAL_IFACE=eth0 make -C sgxlkl down-sgxlkl-network</code></pre>
 <h2 id="the-clients">The clients</h2>
-<p>Execute any one of ./[wolfssl|mbedtls|openssl]-client in the project's root directory.</p>
-<p>The openssl-client is most versatile as it allows to specify the IP and port to connect to via command line parameters.</p>
-<p>Each client outputs a bunch of connection-related information, such as the server's SGX identity (MRENCLAVE, MRSIGNER). You can cross-check this with what the server reports in its output.</p>
+<h3 id="non-sgx-clients">Non-SGX clients</h3>
+<p>Execute any one of the non-SGX binaries wolfssl-client, mbedtls-client or openssl-client in the project's root directory.<br />
+The openssl-client is most versatile as it allows to specify the IP and port to connect to via command line parameters.<br />
+Each client outputs a bunch of connection-related information, such as the server's SGX identity (MRENCLAVE, MRSIGNER). You can cross-check this with what the server reports in its output.</p>
+<h3 id="sgx-client">SGX client</h3>
+<p>The Graphene-SGX client wolfssl-client-mutual only works in combination with wolfssl-ssl-server-mutual.</p>
+<pre><code>SGX=1 ./deps/graphene/Runtime/pal_loader ./wolfssl-client-mutual</code></pre>
 </body>
 </html>

@@ -160,5 +160,11 @@ if [ $VARIANT == "sgxlkl" ] ; then
     bash ./build-sgxlkl.sh || exit 1
 fi
 
-[ $VARIANT == "sgxsdk" ] && make sgxsdk-server
-[ $VARIANT == "graphene" ] && make graphene-server
+if [ $VARIANT == "sgxsdk" ] ; then
+    make sgxsdk-server
+fi
+
+if [ $VARIANT == "graphene" ] ; then
+    make graphene-server
+    make wolfssl-client-mutual
+fi
