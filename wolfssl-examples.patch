@@ -356,20 +356,18 @@ index a72dfad..faa623b 100644
  
  
 diff --git a/tls/server-tls.c b/tls/server-tls.c
-index ebab830..941c078 100644
+index ebab830..dbdcaa0 100644
 --- a/tls/server-tls.c
 +++ b/tls/server-tls.c
-@@ -20,6 +20,9 @@
+@@ -20,6 +20,7 @@
   */
  
  /* the usual suspects */
-+#ifdef SGX_RATLS_MUTUAL
 +#include <assert.h>
-+#endif
  #include <stdlib.h>
  #include <stdio.h>
  #include <string.h>
-@@ -34,12 +37,32 @@
+@@ -34,12 +35,32 @@
  #include <wolfssl/options.h>
  #include <wolfssl/ssl.h>
  
@@ -402,7 +400,7 @@ index ebab830..941c078 100644
  
  int main()
  {
-@@ -79,23 +102,34 @@ int main()
+@@ -79,23 +100,34 @@ int main()
          return -1;
      }
  
@@ -433,8 +431,8 @@ index ebab830..941c078 100644
      }
  
 -
-+#ifdef SGX_RATLS_MUTUAL
 +    int ret;
++#ifdef SGX_RATLS_MUTUAL
 +    ret = wolfSSL_CTX_load_verify_buffer(ctx, crt, crt_len, SSL_FILETYPE_ASN1);
 +    assert(SSL_SUCCESS == ret);
 +    
@@ -444,7 +442,7 @@ index ebab830..941c078 100644
  
      /* Initialize the server address struct with zeros */
      memset(&servAddr, 0, sizeof(servAddr));
-@@ -141,10 +175,34 @@ int main()
+@@ -141,10 +173,34 @@ int main()
          /* Attach wolfSSL to the socket */
          wolfSSL_set_fd(ssl, connd);
  
@@ -481,7 +479,7 @@ index ebab830..941c078 100644
          /* Read the client data into our buff array */
          memset(buff, 0, sizeof(buff));
          if (wolfSSL_read(ssl, buff, sizeof(buff)-1) == -1) {
-@@ -169,7 +227,7 @@ int main()
+@@ -169,7 +225,7 @@ int main()
          len = strnlen(buff, sizeof(buff));
  
          /* Reply back to the client */
