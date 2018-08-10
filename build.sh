@@ -157,7 +157,7 @@ if [ $VARIANT == "scone" ] ; then
 fi
 
 if [ $VARIANT == "sgxlkl" ] ; then
-    bash ./build-sgxlkl.sh || exit 1
+    make -C sgxlkl -j2 || exit 1
 fi
 
 if [ $VARIANT == "sgxsdk" ] ; then

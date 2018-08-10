@@ -1,10 +1,12 @@
 .PHONY=all
-all: sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img
+all:
+	$(MAKE) sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img
+	$(MAKE) sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img
 
 .PHONY=sgx-lkl
 sgx-lkl:
 	[ ! -d $@ ] && git clone https://github.com/lsds/sgx-lkl.git || true
-	cd sgx-lkl && $(MAKE)
+	cd sgx-lkl && $(MAKE) -j1
 
 SRC=../wolfssl-ra-attester.c \
 	../wolfssl-ra.c \
@@ -15,13 +17,56 @@ SRC=../wolfssl-ra-attester.c \
 	../sgx_report.S \
 	../ra_tls_options.c
 
-INCLUDES=-I.. -I/opt/intel/sgxsdk/include \
+INCLUDES=-I.. -Ilocal/include -I/opt/intel/sgxsdk/include \
   -I../deps/linux-sgx/common/inc \
 	-I../deps/linux-sgx/common/inc/internal \
   -I../deps/linux-sgx/external/epid-sdk-3.0.0
 
-ldpreload.so: ldpreload.c $(SRC)
-	local/bin/musl-gcc -o $@ $^ $(INCLUDES) $(CFLAGSERRORS) -shared -fPIC -Llocal/lib -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libm.a -l:libz.a -ldl
+### Dependencies
+
+CC=$(abspath sgx-lkl/build/host-musl/bin/musl-gcc)
+
+.PHONY=deps
+deps: deps/openssl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
+
+deps/openssl: | sgx-lkl
+	mkdir -p deps && cd deps && git clone https://github.com/openssl/openssl.git
+	cd $@ && git checkout OpenSSL_1_0_2g
+	cd $@ && CC=$(CC) ./config --prefix=$(abspath local) no-shared -fPIC
+	cd $@ && $(MAKE) -j1 install
+
+deps/zlib: | sgx-lkl
+	mkdir -p deps && cd deps && git clone https://github.com/madler/zlib.git
+	cd $@ && CFLAGS=-fPIC CC=$(CC) ./configure --prefix=$(abspath local) --static
+	cd $@ && $(MAKE) install
+
+# curl version 7_47_0 seems to work in combination with Intel's HTTPS proxy ...
+deps/curl: | deps/openssl sgx-lkl
+	mkdir -p deps && cd deps && git clone https://github.com/curl/curl.git
+	cd $@ && git checkout curl-7_47_0
+	cd $@ && ./buildconf
+	cd $@ && CC=$(CC) ./configure --prefix=$(abspath local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --with-ssl=$(abspath local) --disable-shared --with-pic
+	cd $@ && $(MAKE) install
+
+deps/protobuf-c: | sgx-lkl
+	mkdir -p deps && cd deps && git clone https://github.com/protobuf-c/protobuf-c.git
+	cd $@ && ./autogen.sh
+	cd $@ && ./configure --prefix=$(abspath local) --disable-shared --with-pic
+	cd $@ && $(MAKE) protobuf-c/libprotobuf-c.la
+	cd $@ && mkdir -p ../../local/lib ../../local/include/protobuf-c
+	cd $@ && cp protobuf-c/.libs/libprotobuf-c.a ../../local/lib
+	cd $@ && cp protobuf-c/protobuf-c.h ../../local/include/protobuf-c
+
+deps/wolfssl: | sgx-lkl
+	mkdir -p deps && cd deps && git clone https://github.com/wolfSSL/wolfssl
+	cd $@ && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
+	cd $@ && patch -p1 < ../../../wolfssl-sgx-attestation.patch
+	cd $@ && ./autogen.sh
+	cd $@ && CC=$(CC) CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT" ./configure --prefix=$(abspath local) --enable-writedup --enable-static --disable-shared --enable-keygen --enable-certgen --enable-certext # --enable-debug
+	cd $@ && $(MAKE) install
+
+ldpreload.so: ldpreload.c $(SRC) | sgx-lkl deps
+	sgx-lkl/build/host-musl/bin/musl-gcc -o $@ $^ $(INCLUDES) $(CFLAGSERRORS) -shared -fPIC -Llocal/lib -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libm.a -l:libz.a -ldl
 
 sgx-lkl/apps/ratls/Makefile sgx-lkl/apps/ratls/buildenv.sh: | sgx-lkl
 	cp -a ratls sgx-lkl/apps
@@ -29,11 +74,14 @@ sgx-lkl/apps/ratls/Makefile sgx-lkl/apps/ratls/buildenv.sh: | sgx-lkl
 sgx-lkl/apps/https-server/Makefile sgx-lkl/apps/https-server/buildenv.sh: | sgx-lkl
 	cp -a https-server/ sgx-lkl/apps
 
-sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img: ldpreload.so sgx-lkl/apps/ratls/Makefile sgx-lkl/apps/ratls/buildenv.sh | sgx-lkl/apps/ratls
+sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img: ../sgxlkl-wolfssl-ssl-server sgx-lkl/apps/ratls/Makefile sgx-lkl/apps/ratls/buildenv.sh
 	( cd sgx-lkl/apps/ratls && USER=`whoami` make )
 
-sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img: ldpreload.so sgx-lkl/apps/https-server/Makefile sgx-lkl/apps/https-server/buildenv.sh | sgx-lkl/apps/https-server
+sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img: ldpreload.so sgx-lkl/apps/https-server/Makefile sgx-lkl/apps/https-server/buildenv.sh
 	( cd sgx-lkl/apps/https-server && USER=`whoami` make )
+
+../sgxlkl-wolfssl-ssl-server: | sgx-lkl deps
+	$(MAKE) -C .. sgxlkl-wolfssl-ssl-server
 
 .PHONY=clean
 clean:
@@ -42,7 +90,7 @@ clean:
 .PHONY=distclean
 distclean:
 	$(RM) ldpreload.so
-	$(RM) -r sgx-lkl
+	$(RM) -r sgx-lkl deps/openssl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
 
 EXTERNAL_IFACE ?= eth0
 .PHONY=up-sgxlkl-network
@@ -64,9 +112,9 @@ down-sgxlkl-network:
 	pkill -f TCP-LISTEN:1234
 
 .PHONY=run-https-server
-run-https-server:
+run-https-server: sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img
 	LD_PRELOAD=/ldpreload.so SGXLKL_TAP=sgxlkl_tap0 RATLS_AESMD_IP=10.0.1.254 SGXLKL_HEAP=268435456 SGXLKL_KEY=$(abspath sgx-lkl/build/config/enclave_debug.key ) sgx-lkl/build/sgx-lkl-run sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img /usr/bin/python /https-server.py
 
 .PHONY=run-wolfssl-server
-run-wolfssl-server:
+run-wolfssl-server: sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img
 	SGXLKL_TAP=sgxlkl_tap0 SGXLKL_VERBOSE=1 RATLS_AESMD_IP=10.0.1.254 sgx-lkl/build/sgx-lkl-run sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img /sgxlkl-wolfssl-ssl-server
