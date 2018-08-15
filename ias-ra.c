@@ -265,12 +265,16 @@ void obtain_attestation_verification_report
                               attn_report->ias_report_signature,
                               sizeof(attn_report->ias_report_signature),
                               &attn_report->ias_report_signature_len);
-        const int body_base64_size = (body.len % 3 == 0) ? body.len / 3 * 4 :
-            (body.len + (3 - body.len % 3)) / 3 * 4;
-         // +1 since encodeBlock() puts a \0 at the end ...
+
+        // If body.len is not divisible by 3, +2 rounds up to next multiple of 3.
+        const int body_base64_size = (body.len + 2) / 3 * 4;
+         // +1 since EVP_EncodeBlock() puts a \0 at the end ...
         assert(sizeof(attn_report->ias_report) >= (size_t) body_base64_size + 1);
+        // EVP_EncodeBlock always outputs multiples of 4.
         ret = encodeBlock(attn_report->ias_report,
                               (unsigned char*) body.data, body.len);
+        assert(ret % 4 == 0);
+        assert(ret == body_base64_size);
          // Here we ignore the trailing \0
         attn_report->ias_report_len = body_base64_size;
 

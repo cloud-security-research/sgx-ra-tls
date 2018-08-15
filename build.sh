@@ -28,21 +28,6 @@ fi
 mkdir -p deps
 pushd deps
 
-# SGX-LKL requires specific version of musl.
-# NOTE: Binaries built with glibc are not compatible with musl;
-#       one must be careful to not mix libraries/programs built with
-#       glibc (e.g. for Graphene-SGX) and with musl (e.g. for SGX-LKL).
-
-if [[ ! -d musl-1.1.19 && $VARIANT == "sgxlkl" ]] ; then
-    wget https://git.musl-libc.org/cgit/musl/snapshot/musl-1.1.19.tar.gz
-    tar xfz musl-1.1.19.tar.gz
-    pushd musl-1.1.19
-    ./configure --prefix=$(readlink -f ../local)
-    make -j8
-    make install
-    popd
-fi
-
 # Choose compiler to build deps (its own for SCONE, previously built musl
 # for SGX-LKL, and default gcc for Graphene and SGX-SDK).
 # Note that musl above must be built with default gcc.
@@ -52,7 +37,7 @@ if [[ ( $VARIANT == "graphene" || $VARIANT == "sgxsdk" ) ]] ; then
 elif [[ $VARIANT == "scone" ]] ; then
     export CC=/usr/local/bin/scone-gcc
 elif [[ $VARIANT == "sgxlkl" ]] ; then
-    export CC=$(readlink -f local/bin/musl-gcc)
+    : # sgxlkl specifies its own musl
 fi
 
 # The OpenSSL, wolfSSL, mbedtls libraries are necessary for the non-SGX
@@ -158,6 +143,9 @@ if [[ ! -d curl ]] ; then
     make install || exit 1
     rename 's/libcurl/libcurl-wolfssl/' ../local/lib/libcurl.*
 
+    # default libcurl.a version is with OpenSSL
+    ln -s libcurl-openssl.a ../local/lib/libcurl.a
+
     popd
 fi
 
@@ -234,14 +222,19 @@ echo "Building non-SGX-SDK sample clients ..."
 make clients || exit 1
 make clean || exit 1
 
-[ $VARIANT == "sgxlkl" ] && make sgxlkl-wolfssl-ssl-server
-[ $VARIANT == "scone" ] && make scone-server
-[ $VARIANT == "sgxsdk" ] && make sgxsdk-server
-[ $VARIANT == "graphene" ] && make graphene-server
+if [ $VARIANT == "scone" ] ; then
+    make scone-server || exit 1
+fi
 
 if [ $VARIANT == "sgxlkl" ] ; then
-    # USER=`whoami` is required only within Docker containers. SGX-LKL's
-    # Makefile uses the variable, but it's not typically set in a Docker
-    # container.
-    ( cd deps/sgx-lkl/apps/ratls && USER=`whoami` make )
+    make -C sgxlkl -j2 || exit 1
+fi
+
+if [ $VARIANT == "sgxsdk" ] ; then
+    make sgxsdk-server
+fi
+
+if [ $VARIANT == "graphene" ] ; then
+    make graphene-server
+    make wolfssl-client-mutual
 fi

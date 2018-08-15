@@ -322,8 +322,6 @@ void do_remote_attestation
               quote,
               quote_size);
 
-    // hex_print((uint8_t*) quote, quote_size);
-
     obtain_attestation_verification_report(quote,
                                            quote_size,
                                            opts,

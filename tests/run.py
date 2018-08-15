@@ -50,8 +50,30 @@ def graphene_sgx_test_cases():
             if server_process.poll() == None:
                 server_process.terminate()
 
+def sgxlkl_setup_iptables():
+    cmds = ["sudo ip tuntap add dev sgxlkl_tap0 mode tap user `whoami`",
+            "sudo ip link set dev sgxlkl_tap0 up",
+            "sudo ip addr add dev sgxlkl_tap0 10.0.1.254/24",
+            "sudo iptables -I FORWARD -i sgxlkl_tap0 -o eth0 -s 10.0.1.0/24 -m conntrack --ctstate NEW -j ACCEPT",
+            "sudo iptables -I FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+            "sudo iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE"]
+
+    for cmd in cmds:
+        check_call(cmd, shell=True)
+
+def sgxlkl_teardown_iptables():
+    cmds = ["sudo iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE",
+            "sudo iptables -D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+            "sudo iptables -D FORWARD -s 10.0.1.0/24 -i sgxlkl_tap0 -o eth0 -m conntrack --ctstate NEW -j ACCEPT",
+            "sudo ip tuntap del dev sgxlkl_tap0 mode tap"]
+
+    for cmd in cmds:
+        check_call(split(cmd))
+
 # This does not setup the iptable rules required for SGX-LKL to communicate with the outside world!
 def sgxlkl_test_case():
+
+    sgxlkl_setup_iptables()
     
     socat_process = Popen("exec socat -t10 TCP-LISTEN:1234,bind=10.0.1.254,reuseaddr,fork,range=10.0.1.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket", shell=True)
     sleep(1)
@@ -80,6 +102,7 @@ def sgxlkl_test_case():
         if server_process != None:
             if server_process.poll() == None:
                 server_process.terminate()
+        sgxlkl_teardown_iptables()
 
 def main() :
     sgx_sdk_test_cases()

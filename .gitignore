@@ -45,4 +45,30 @@ flycheck_*.el
 .dir-locals.el
 
 *.o
+*.a
+*.so
+deps/
+local/
 
+# Generated protobuf sources
+messages.pb-c.c
+messages.pb-c.h
+
+# Executables
+mbedtls-client
+mbedtls-ssl-server
+openssl-client
+wolfssl-client
+wolfssl-ssl-server
+sgxlkl-wolfssl-ssl-server
+wolfssl-ssl-server-mutual
+wolfssl-client-mutual
+
+# Graphene-SGX
+*.sig
+*.token
+*.manifest.sgx
+
+# OSX stuff
+._*
+.DS_Store
