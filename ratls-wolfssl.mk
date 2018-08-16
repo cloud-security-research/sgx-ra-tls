@@ -75,4 +75,4 @@ clean:
 	@rm -f $(Wolfssl_C_Objects)
 
 mrproper: clean
-	@rm -f a_tls_t.c ra_tls_t.h ra_tls_u.h ra_tls_u.c libsgx_ra_tls_wolfssl.a
+	@rm -f ra_tls_t.c ra_tls_t.h ra_tls_u.h ra_tls_u.c libsgx_ra_tls_wolfssl.a

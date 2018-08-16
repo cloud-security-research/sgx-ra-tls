@@ -23,4 +23,13 @@ int verify_sgx_cert_extensions
     uint32_t der_crt_len
 );
 
+int get_measurements_size();
+
+void get_measurements_from_cert
+(
+    unsigned char* der /* in */,
+    int der_len        /* in */,
+    unsigned char* mr_enclave /* out */,
+    unsigned char* mr_signer  /* out */
+);
 #endif

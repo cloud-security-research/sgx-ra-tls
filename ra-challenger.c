@@ -14,6 +14,7 @@ void *memmem(const void *h0, size_t k, const void *n0, size_t l);
 #endif
 
 #include "ra-challenger_private.h"
+#include "ra-challenger.h"
 
 #define OID(N) {0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF8, 0x4D, 0x8A, 0x39, (N)}
 
@@ -53,4 +54,26 @@ void find_oid
     *len  =  p[i++] << 8;
     *len +=  p[i++];
     *val  = &p[i++];
+}
+
+/* This func removes the need for user app to know SGX-related const */
+int get_measurements_size() {
+    return SGX_HASH_SIZE;
+}
+
+/** Returns mr_enclave and mr_signer strings from SGX quote from DER cert
+ *  if pointers are provided. User is responsible to allocate strings
+ *  mr_enclave and mr_signer of size SGX_HASH_SIZE.
+ *  NOTE: This func removes the need for user app to know sgx_quote struct. */
+void get_measurements_from_cert(unsigned char* der, int der_len,
+        unsigned char* mr_enclave, unsigned char* mr_signer)
+{
+    sgx_quote_t quote;
+    get_quote_from_cert(der, der_len, &quote);
+    sgx_report_body_t* body = &quote.report_body;
+
+    if (mr_enclave)
+        memcpy(mr_enclave, body->mr_enclave.m, SGX_HASH_SIZE);
+    if (mr_signer)
+        memcpy(mr_signer, body->mr_signer.m, SGX_HASH_SIZE);
 }

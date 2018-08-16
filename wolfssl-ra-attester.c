@@ -133,3 +133,31 @@ void create_key_and_x509
                                 der_cert, der_cert_len,
                                 opts);
 }
+
+void create_key_and_x509_pem
+(
+    uint8_t* pem_key,  /* out */
+    int* pem_key_len,  /* in/out */
+    uint8_t* pem_cert, /* out */
+    int* pem_cert_len, /* in/out */
+    const struct ra_tls_options* opts
+)
+{
+    unsigned char der_key[16 * 1024] = {0, };
+    int der_key_len = 16 * 1024;
+    unsigned char der_cert[16 * 1024] = {0, };
+    int der_cert_len = 16 * 1024;
+    int len;
+
+    wolfssl_create_key_and_x509(der_key, &der_key_len,
+                                der_cert, &der_cert_len,
+                                opts);
+
+    len = wc_DerToPem(der_key, der_key_len, pem_key, 16*1024, PRIVATEKEY_TYPE);
+    assert(len > 0);
+    *pem_key_len = len;
+
+    len = wc_DerToPem(der_cert, der_cert_len, pem_cert, 16*1024, CERT_TYPE);
+    assert(len > 0);
+    *pem_cert_len = len;
+}

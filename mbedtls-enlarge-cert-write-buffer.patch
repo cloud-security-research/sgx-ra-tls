@@ -1,5 +1,5 @@
 diff --git a/library/x509write_crt.c b/library/x509write_crt.c
-index d1d9a22..7233128 100644
+index d1d9a22..41a1ee1 100644
 --- a/library/x509write_crt.c
 +++ b/library/x509write_crt.c
 @@ -302,7 +302,7 @@ int mbedtls_x509write_crt_der( mbedtls_x509write_cert *ctx, unsigned char *buf,
@@ -11,3 +11,12 @@ index d1d9a22..7233128 100644
      size_t sub_len = 0, pub_len = 0, sig_and_oid_len = 0, sig_len;
      size_t len = 0;
      mbedtls_pk_type_t pk_alg;
+@@ -436,7 +436,7 @@ int mbedtls_x509write_crt_pem( mbedtls_x509write_cert *crt, unsigned char *buf,
+                        void *p_rng )
+ {
+     int ret;
+-    unsigned char output_buf[4096];
++    unsigned char output_buf[2*4096];
+     size_t olen = 0;
+
+     if( ( ret = mbedtls_x509write_crt_der( crt, output_buf, sizeof(output_buf),
