@@ -14,7 +14,6 @@
 
 #include "ra.h"
 #include "wolfssl-ra.h"
-#include "wolfssl-ra-attester.h"
 #include "ra-attester.h"
 #include "ra_private.h"
 
@@ -67,7 +66,7 @@ void generate_x509
     *der_crt_len = certSz;
 }
 
-void
+static void
 wolfssl_create_key_and_x509
 (
     uint8_t* der_key,

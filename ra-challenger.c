@@ -36,16 +36,14 @@ void find_oid
 
     p += oid_len;
 
-    // three bytes encoding criticality 0x01, 0x01, 0xFF
     int i = 0;
-#if 0
-    // Enable again if extension is deemed critical. Most TLS
-    // implementation will fail validation of a certificate with
-    // unknown critical extensions.
-    assert(p[i++] == 0x01);
-    assert(p[i++] == 0x01);
-    assert(p[i++] == 0xFF);
-#endif
+
+    // Some TLS libraries generate a BOOLEAN for the criticality of the extension.
+    if (p[i] == 0x01) {
+        assert(p[i++] == 0x01); // tag, 0x01 is ASN1 Boolean
+        assert(p[i++] == 0x01); // length
+        assert(p[i++] == 0x00); // value (0 is non-critical, non-zero is critical)
+    }
 
     // Now comes the octet string
     assert(p[i++] == 0x04); // tag for octet string

@@ -12,7 +12,8 @@ LIBS=mbedtls/libra-attester.a \
 	wolfssl/libra-challenger.a \
 	wolfssl/libnonsdk-ra-attester.a \
 	wolfssl/libra-attester.a \
-	openssl/libra-challenger.a
+	openssl/libra-challenger.a \
+	openssl/libra-attester.a
 
 .PHONY=all
 all: $(LIBS)
@@ -59,6 +60,9 @@ wolfssl/libnonsdk-ra-attester.a : wolfssl wolfssl-ra.o wolfssl-ra-attester.o ias
 		$(AR) rcs $@ $(filter %.o, $^)
 
 openssl/libra-challenger.a : openssl ra-challenger.o openssl-ra-challenger.o ias_sign_ca_cert.o
+	$(AR) rcs $@ $(filter %.o, $^)
+
+openssl/libnonsdk-ra-attester.a : openssl ra-challenger.o openssl-ra-attester.o ias-ra.o  nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 SGX_GIT=deps/linux-sgx
@@ -153,5 +157,33 @@ clean:
 mrproper: clean
 	$(RM) $(EXECS) $(LIBS)
 	$(RM) -r deps/curl deps/graphene deps/linux-sgx deps/linux-sgx-driver deps/mbedtls deps/wolfssl deps/wolfssl-examples
+	$(RM) -r openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester
 
 .PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper
+
+openssl-ra-attester: tests/ra-attester.c openssl/libnonsdk-ra-attester.a ra_tls_options.c 
+	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+
+wolfssl-ra-attester: tests/ra-attester.c wolfssl/libnonsdk-ra-attester.a ra_tls_options.c 
+	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libwolfssl.a -lm -l:libz.a -ldl
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+
+mbedtls-ra-attester: tests/ra-attester.c mbedtls/libnonsdk-ra-attester.a ra_tls_options.c 
+	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -lm -l:libz.a -ldl
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+
+openssl-ra-challenger: tests/ra-challenger.c openssl/libra-challenger.a
+	$(CC) $(CFLAGS) -DOPENSSL $^ -o $@ -l:libcrypto.a -ldl
+
+wolfssl-ra-challenger: tests/ra-challenger.c wolfssl/libra-challenger.a
+	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libwolfssl.a -lm
+
+mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
+	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm
+
+.PHONY=tests
+tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester
