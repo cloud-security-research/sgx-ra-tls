@@ -6,7 +6,9 @@ all:
 .PHONY=sgx-lkl
 sgx-lkl:
 	[ ! -d $@ ] && git clone https://github.com/lsds/sgx-lkl.git || true
+	cd sgx-lkl && git checkout 2c0aa8a41178637ac8f4dabd8f7f02a5b47eed90
 	cd sgx-lkl && $(MAKE) -j1
+	cd sgx-lkl && $(MAKE) -j1 sgx-lkl-sign
 
 SRC=../wolfssl-ra-attester.c \
 	../wolfssl-ra.c \
@@ -24,7 +26,7 @@ INCLUDES=-I.. -Ilocal/include -I/opt/intel/sgxsdk/include \
 
 ### Dependencies
 
-CC=$(abspath sgx-lkl/build/host-musl/bin/musl-gcc)
+MUSLCC=$(abspath sgx-lkl/build/host-musl/bin/musl-gcc)
 
 .PHONY=deps
 deps: deps/openssl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
@@ -32,12 +34,12 @@ deps: deps/openssl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
 deps/openssl: | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/openssl/openssl.git
 	cd $@ && git checkout OpenSSL_1_0_2g
-	cd $@ && CC=$(CC) ./config --prefix=$(abspath local) no-shared -fPIC
+	cd $@ && CC=$(MUSLCC) ./config --prefix=$(abspath local) no-shared -fPIC
 	cd $@ && $(MAKE) -j1 install
 
 deps/zlib: | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/madler/zlib.git
-	cd $@ && CFLAGS=-fPIC CC=$(CC) ./configure --prefix=$(abspath local) --static
+	cd $@ && CFLAGS=-fPIC CC=$(MUSLCC) ./configure --prefix=$(abspath local) --static
 	cd $@ && $(MAKE) install
 
 # curl version 7_47_0 seems to work in combination with Intel's HTTPS proxy ...
@@ -45,13 +47,13 @@ deps/curl: | deps/openssl sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/curl/curl.git
 	cd $@ && git checkout curl-7_47_0
 	cd $@ && ./buildconf
-	cd $@ && CC=$(CC) ./configure --prefix=$(abspath local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --with-ssl=$(abspath local) --disable-shared --with-pic
+	cd $@ && CC=$(MUSLCC) ./configure --prefix=$(abspath local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --with-ssl=$(abspath local) --disable-shared --with-pic
 	cd $@ && $(MAKE) install
 
 deps/protobuf-c: | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/protobuf-c/protobuf-c.git
 	cd $@ && ./autogen.sh
-	cd $@ && ./configure --prefix=$(abspath local) --disable-shared --with-pic
+	cd $@ && CC=$(MUSLCC) ./configure --prefix=$(abspath local) --disable-shared --with-pic
 	cd $@ && $(MAKE) protobuf-c/libprotobuf-c.la
 	cd $@ && mkdir -p ../../local/lib ../../local/include/protobuf-c
 	cd $@ && cp protobuf-c/.libs/libprotobuf-c.a ../../local/lib
@@ -62,7 +64,7 @@ deps/wolfssl: | sgx-lkl
 	cd $@ && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
 	cd $@ && patch -p1 < ../../../wolfssl-sgx-attestation.patch
 	cd $@ && ./autogen.sh
-	cd $@ && CC=$(CC) CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT" ./configure --prefix=$(abspath local) --enable-writedup --enable-static --disable-shared --enable-keygen --enable-certgen --enable-certext # --enable-debug
+	cd $@ && CC=$(MUSLCC) CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT" ./configure --prefix=$(abspath local) --enable-writedup --enable-static --disable-shared --enable-keygen --enable-certgen --enable-certext # --enable-debug
 	cd $@ && $(MAKE) install
 
 ldpreload.so: ldpreload.c $(SRC) | sgx-lkl deps

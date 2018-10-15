@@ -28,7 +28,7 @@ Some files may only exist after building the sources.
 
 ## Code Structure
 
-The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. We implemented the challenger and attester using two different cryptographic libraries: wolfSSL ([challenger](wolfssl-ra-challenger.c), [attester](wolfssl-ra-attester.c)) and mbedtls ([challenger](mbedtls-ra-challenger.c), [attester](mbedtls-ra-attester.c)).  We also provide an (OpenSSL-based challenger)[openssl-ra-challenger.c], but no attester. Note that the attester must communicate with the Intel Attestation Service and currently depends on OpenSSL to do this.
+The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. We implemented the challenger and attester using two different cryptographic libraries: wolfSSL ([challenger](wolfssl-ra-challenger.c), [attester](wolfssl-ra-attester.c)), mbedtls ([challenger](mbedtls-ra-challenger.c), [attester](mbedtls-ra-attester.c)) and OpenSSL ([challenger](openssl-ra-challenger.c), [attester](openssl-ra-attester.c)). Note that the attester must communicate with the Intel Attestation Service and currently depends on OpenSSL to do this.
 
 The attester's code consists of [trusted](sgxsdk-ra-attester_t.c) and [untrusted](sgxsdk-ra-attester_u.c) SGX-SDK specific code to produce a quote using the SGX SDK. If the SGX SDK is not used, e.g., when using Graphene-SGX, there is code to [obtain the SGX quote](nonsdk-ra-attester.c) by directly communicating with the platform's architectural enclave.
 

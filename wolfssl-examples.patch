@@ -75,7 +75,7 @@ index 4d157cd..d538825 100644
  endif
  
 -App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -lpthread
-+App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -L$(SGX_RA_TLS_ROOT)/deps/local/lib -l$(Urts_Library_Name) -lpthread -lssl -lcrypto -lcurl
++App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -L$(SGX_RA_TLS_ROOT)/deps/local/lib -l$(Urts_Library_Name) -lpthread -lcurl-openssl -lssl -lcrypto -lz -ldl
  
  ifneq ($(SGX_MODE), HW)
  	App_Link_Flags += -lsgx_uae_service_sim

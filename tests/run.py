@@ -6,6 +6,10 @@ from time import sleep
 from shlex import split
 import sys
 
+ext_iface = 'eth0'
+if 'EXTERNAL_IFACE' in os.environ:
+    ext_iface = os.environ['EXTERNAL_IFACE']
+
 def sgx_sdk_test_cases() :
     for client in ['mbedtls-client', 'wolfssl-client', 'openssl-client -p 11111'] :
         server_process = None
@@ -54,17 +58,17 @@ def sgxlkl_setup_iptables():
     cmds = ["sudo ip tuntap add dev sgxlkl_tap0 mode tap user `whoami`",
             "sudo ip link set dev sgxlkl_tap0 up",
             "sudo ip addr add dev sgxlkl_tap0 10.0.1.254/24",
-            "sudo iptables -I FORWARD -i sgxlkl_tap0 -o eth0 -s 10.0.1.0/24 -m conntrack --ctstate NEW -j ACCEPT",
+            "sudo iptables -I FORWARD -i sgxlkl_tap0 -o "+ext_iface+" -s 10.0.1.0/24 -m conntrack --ctstate NEW -j ACCEPT",
             "sudo iptables -I FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
-            "sudo iptables -t nat -I POSTROUTING -o eth0 -j MASQUERADE"]
+            "sudo iptables -t nat -I POSTROUTING -o "+ext_iface+" -j MASQUERADE"]
 
     for cmd in cmds:
         check_call(cmd, shell=True)
 
 def sgxlkl_teardown_iptables():
-    cmds = ["sudo iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE",
+    cmds = ["sudo iptables -t nat -D POSTROUTING -o "+ext_iface+" -j MASQUERADE",
             "sudo iptables -D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
-            "sudo iptables -D FORWARD -s 10.0.1.0/24 -i sgxlkl_tap0 -o eth0 -m conntrack --ctstate NEW -j ACCEPT",
+            "sudo iptables -D FORWARD -s 10.0.1.0/24 -i sgxlkl_tap0 -o "+ext_iface+" -m conntrack --ctstate NEW -j ACCEPT",
             "sudo ip tuntap del dev sgxlkl_tap0 mode tap"]
 
     for cmd in cmds:
