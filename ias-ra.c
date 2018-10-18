@@ -6,7 +6,12 @@
 #include <string.h>
 #include <curl/curl.h>
 
+#ifndef USE_WOLFSSL
 #include <openssl/evp.h> // for base64 encode/decode
+#else
+#include <wolfssl/options.h>
+#include <wolfssl/wolfcrypt/coding.h>
+#endif
 
 #include <stdint.h>
 
@@ -162,6 +167,35 @@ void parse_response_header
     *signature_size = sig_end - sig_begin;
 }
 
+/**
+ * 
+ */
+static void base64_encode
+(
+    uint8_t *in,
+    uint32_t in_len,
+    uint8_t* out,
+    uint32_t* out_len /* in/out */
+)
+{
+    // + 1 to account for the terminating \0.
+    assert(*out_len >= (in_len + 3 - 1) / 3 * 4 + 1);
+    bzero(out, *out_len);
+    
+#ifndef USE_WOLFSSL
+        int ret = EVP_EncodeBlock(out, in, in_len);
+        // + 1 since EVP_EncodeBlock() returns length excluding the terminating \0.
+        assert((size_t) ret + 1 <= *out_len);
+        *out_len = ret + 1;
+#else
+        int ret = Base64_Encode_NoNl(in, in_len, out, out_len);
+        assert(ret == 0);
+        // No need append terminating \0 since we memset() the whole
+        // buffer in the beginning.
+        *out_len += 1;
+#endif
+}
+
 /** Turns a binary quote into an attestation verification report.
 
   Communicates with Intel Attestation Service via its HTTP REST interface.
@@ -172,7 +206,7 @@ void obtain_attestation_verification_report
     const uint32_t quote_size,
     const struct ra_tls_options* opts,
     attestation_verification_report_t* attn_report
- )
+)
 {
     CURL *curl;
     CURLcode res;
@@ -200,11 +234,11 @@ void obtain_attestation_verification_report
 
         const char json_template[] = "{\"isvEnclaveQuote\":\"%s\"}";
         unsigned char quote_base64[quote_size * 2];
+        uint32_t quote_base64_len = sizeof(quote_base64);
         char json[quote_size * 2];
 
-        ret = EVP_EncodeBlock(quote_base64, (unsigned char*) quote, quote_size);
-         // +1 since EVP_EncodeBlock() adds \0 to the output.
-        assert((size_t) ret + 1 <= sizeof(quote_base64));
+        base64_encode((uint8_t*) quote, quote_size,
+                      quote_base64, &quote_base64_len);
 
         snprintf(json, sizeof(json), json_template, quote_base64);
     
@@ -233,17 +267,10 @@ void obtain_attestation_verification_report
                               sizeof(attn_report->ias_report_signature),
                               &attn_report->ias_report_signature_len);
 
-        // If body.len is not divisible by 3, +2 rounds up to next multiple of 3.
-        const int body_base64_size = (body.len + 2) / 3 * 4;
-         // +1 since EVP_EncodeBlock() puts a \0 at the end ...
-        assert(sizeof(attn_report->ias_report) >= (size_t) body_base64_size + 1);
-        // EVP_EncodeBlock always outputs multiples of 4.
-        ret = EVP_EncodeBlock(attn_report->ias_report,
-                              (unsigned char*) body.data, body.len);
-        assert(ret % 4 == 0);
-        assert(ret == body_base64_size);
-         // Here we ignore the trailing \0
-        attn_report->ias_report_len = body_base64_size;
+        attn_report->ias_report_len = sizeof(attn_report->ias_report);
+        base64_encode((uint8_t*) body.data, body.len,
+                      attn_report->ias_report, &attn_report->ias_report_len);
+        attn_report->ias_report_len -= 1;
 
         extract_certificates_from_response_header(curl,
                                                   header.data, header.len,

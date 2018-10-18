@@ -69,6 +69,7 @@ if [[ ! -d wolfssl ]] ; then
     pushd wolfssl
     git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
     patch -p1 < ../../wolfssl-sgx-attestation.patch || exit 1
+    patch -p1 < ../../00-wolfssl-allow-large-certificate-request-msg.patch || exit 1
     [ ! -f ./configure ] && ./autogen.sh
     # Add --enable-debug for debug build
     # --enable-nginx: #define's WOLFSSL_ALWAYS_VERIFY_CB and
