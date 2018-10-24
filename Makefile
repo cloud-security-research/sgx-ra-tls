@@ -4,7 +4,7 @@
 # TODO: We must use Curl with OpenSSL (see https://github.com/cloud-security-research/sgx-ra-tls/issues/1). We are stuck with two libs for now.
 
 export SGX_SDK?=/opt/intel/sgxsdk
-CFLAGS=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include -fPIC
+CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include -fPIC
 CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS+=$(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS+=-DSGX_GROUP_OUT_OF_DATE
@@ -55,7 +55,7 @@ mbedtls/libra-attester.a : mbedtls mbedtls-ra-attester.o ias-ra-openssl.o
 mbedtls/libnonsdk-ra-attester.a : mbedtls mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-nonsdk-ra-attester.o: messages.pb-c.h
+nonsdk-ra-attester.o: messages.pb-c.c
 
 mbedtls/libra-tls.so : mbedtls mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(CC) -shared -o $@ $(filter %.o, $^) -Ldeps/local/lib -l:libcurl-openssl.a -l:libmbedtls.a -l:libmbedx509.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
@@ -71,16 +71,16 @@ ias-ra-wolfssl.o: CFLAGS += -DUSE_WOLFSSL
 wolfssl/libra-attester.a: wolfssl wolfssl-ra-attester.o wolfssl-ra.o ias-ra-wolfssl.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-wolfssl/libnonsdk-ra-attester.a : wolfssl wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+wolfssl/libnonsdk-ra-attester.a: wolfssl wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 		$(AR) rcs $@ $(filter %.o, $^)
 
-wolfssl/libra-tls.so : wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+wolfssl/libra-tls.so: wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(CC) -shared -o $@ $(filter %.o, $^) -Ldeps/local/lib -l:libcurl-wolfssl.a -l:libwolfssl.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
 
-openssl/libra-challenger.a : openssl ra-challenger.o openssl-ra-challenger.o ias_sign_ca_cert.o
+openssl/libra-challenger.a: openssl ra-challenger.o openssl-ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-openssl/libnonsdk-ra-attester.a : openssl ra-challenger.o openssl-ra-attester.o ias-ra-openssl.o  nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+openssl/libnonsdk-ra-attester.a: openssl ra-challenger.o openssl-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 SGX_GIT=deps/linux-sgx
@@ -91,9 +91,9 @@ CFLAGS+=-I$(SGX_GIT)/common/inc/internal -I$(EPID_SDK) -I$(SGX_GIT)/common/inc
 WOLFSSL_RA_ATTESTER_SRC=wolfssl-ra-attester.c wolfssl-ra.c
 MBEDTLS_RA_ATTESTER_SRC=mbedtls-ra-attester.c ra-challenger.c
 MBEDTLS_RA_CHALLENGER_SRC=mbedtls-ra-challenger.c ias_sign_ca_cert.c
-NONSDK_RA_ATTESTER_SRC=ias-ra.c nonsdk-ra-attester.c messages.pb-c.c sgx_report.S
+NONSDK_RA_ATTESTER_SRC=nonsdk-ra-attester.c messages.pb-c.c sgx_report.S
 
-messages.pb-c.c messages.pb-c.h :
+messages.pb-c.c:
 	( cd deps/linux-sgx/psw/ae/common/proto/ ; protoc-c messages.proto --c_out=. )
 	cp deps/linux-sgx/psw/ae/common/proto/messages.pb-c.c deps/linux-sgx/psw/ae/common/proto/messages.pb-c.h .
 
@@ -107,7 +107,7 @@ SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -Ideps/local/include \
 MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
 	ra_tls_options.c \
 	$(MBEDTLS_RA_ATTESTER_SRC) $(MBEDTLS_RA_CHALLENGER_SRC) \
-	$(NONSDK_RA_ATTESTER_SRC)
+	$(NONSDK_RA_ATTESTER_SRC) ias-ra-openssl.c
 MBEDTLS_SSL_SERVER_LIBS=-l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
 
 mbedtls-ssl-server : $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
@@ -161,8 +161,9 @@ scone-wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC)
 
 # SGX-LKL requires position independent code (flags: -fPIE -pie) to
 # map the binary anywhere in the address space.
+sgxlkl-wolfssl-ssl-server: CFLAGS+=-DUSE_WOLFSSL
 sgxlkl-wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC)
-	sgxlkl/sgx-lkl/build/host-musl/bin/musl-gcc -o $@ -fPIE -pie $(CFLAGSERRORS) $(SGXLKL_SSL_SERVER_INCLUDES) -Lsgxlkl/local/lib $(WOLFSSL_SSL_SERVER_SRC) wolfssl-ra-challenger.c ra-challenger.c ias_sign_ca_cert.c -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a
+	sgxlkl/sgx-lkl/build/host-musl/bin/musl-gcc -o $@ -fPIE -pie $(CFLAGS) $(CFLAGSERRORS) $(SGXLKL_SSL_SERVER_INCLUDES) -Lsgxlkl/local/lib $(WOLFSSL_SSL_SERVER_SRC) $(NONSDK_RA_ATTESTER_SRC) ias-ra.c wolfssl-ra-attester.c wolfssl-ra.c ias_sign_ca_cert.c -l:libcurl.a -l:libwolfssl.a -l:libprotobuf-c.a -lm -l:libz.a
 
 wolfssl/ldpreload.so: ldpreload.c
 	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lwolfssl -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl-openssl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libm.a -l:libz.a -ldl
@@ -208,7 +209,7 @@ mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm
 
 .PHONY=deps
-deps: deps/local/lib/libwolfssl.sgx.static.lib.a deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
+deps: deps/linux-sgx deps/local/lib/libwolfssl.sgx.static.lib.a deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
 
 deps/openssl:
 	cd deps && git clone https://github.com/openssl/openssl.git
@@ -218,7 +219,7 @@ deps/openssl:
 deps/local/lib/libcrypto.a deps/local/lib/libssl.a: deps/openssl
 	cd deps/openssl && $(MAKE) && $(MAKE) -j1 install
 
-deps/wolfssl:
+deps/wolfssl/configure:
 	cd deps && git clone https://github.com/wolfSSL/wolfssl
 	cd deps/wolfssl && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
 	cd deps/wolfssl && patch -p1 < ../../wolfssl-sgx-attestation.patch
@@ -228,55 +229,82 @@ deps/wolfssl:
 # Add --enable-debug to ./configure for debug build
 # WOLFSSL_ALWAYS_VERIFY_CB ... Always call certificate verification callback, even if verification succeeds
 # KEEP_OUR_CERT ... Keep the certificate around after the handshake
-WOLFSSL_CFLAGS="-fPIC -O2 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
-deps/local/lib/libwolfssl.a: deps/wolfssl
-	cd deps/wolfssl && CFLAGS=$(WOLFSSL_CFLAGS) ./configure --prefix=$(shell readlink -f deps/local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --enable-tlsv10 # --enable-debug
+# --enable-tlsv10 ... required by libcurl
+WOLFSSL_CFLAGS+=-DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT
+WOLFSSL_CONFIGURE_FLAGS+=--prefix=$(shell readlink -f deps/local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --with-pic --disable-examples --disable-crypttests --enable-aesni --enable-intelasm --enable-tlsv10 # --enable-debug
+deps/local/lib/libwolfssl.a: CFLAGS+= $(WOLFSSL_CFLAGS)
+deps/local/lib/libwolfssl.a: deps/wolfssl/configure
+	cd deps/wolfssl && CFLAGS="$(CFLAGS)" ./configure $(WOLFSSL_CONFIGURE_FLAGS)
 	cd deps/wolfssl && $(MAKE) install
 
-deps/local/lib/libwolfssl.sgx.static.lib.a: deps/wolfssl
+deps/local/lib/libwolfssl.sgx.static.lib.a: deps/wolfssl/configure
 	cd deps/wolfssl/IDE/LINUX-SGX && make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT"
 	mkdir -p deps/local/lib && cp deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a deps/local/lib
 
 deps/local/lib/libwolfssl.sgx.static.lib.a: deps/local/lib/libwolfssl.a
 
-deps/curl:
+deps/curl/configure:
 	cd deps && git clone https://github.com/curl/curl.git
 	cd deps/curl && git checkout curl-7_47_0
 	cd deps/curl && ./buildconf
 
 CURL_CONFFLAGS=--prefix=$(shell readlink -f deps/local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --disable-shared
 
-# The phony target libcurl is required as otherwise the rule to build the various libcurl* libraries will be invoked multiple times.
-.PHONY=libcurl
-deps/local/lib/libcurl-wolfssl.a deps/local/lib/libcurl-wolfssl.la deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-openssl.la: libcurl
-libcurl: deps/curl deps/local/lib/libwolfssl.a deps/local/lib/libssl.a deps/local/lib/libz.a
-	cd deps/curl && CFLAGS="-fPIC -O2" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl==$(shell readlink -f deps/local)
-	cd deps/curl && $(MAKE) && $(MAKE) install
-	cd deps/curl && rename 's/libcurl/libcurl-wolfssl/' ../local/lib/libcurl.*
-	cd deps/curl && $(MAKE) clean
-	cd deps/curl && CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
-	cd deps/curl && $(MAKE) && $(MAKE) install
+deps/local/lib/libcurl-wolfssl.a: deps/curl/configure deps/local/lib/libwolfssl.a
+	cp -a deps/curl deps/curl-wolfssl
+	cd deps/curl-wolfssl && CFLAGS="-fPIC -O2" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
+	cd deps/curl-wolfssl && $(MAKE)
+	cp deps/curl-wolfssl/lib/.libs/libcurl.a deps/local/lib/libcurl-wolfssl.a
+
+deps/local/lib/libcurl-openssl.a: deps/curl/configure deps/local/lib/libwolfssl.a
+	cp -a deps/curl deps/curl-openssl
+	cd deps/curl-openssl && CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
+	cd deps/curl-openssl && $(MAKE) && $(MAKE) install
 	cd deps/curl && rename 's/libcurl/libcurl-openssl/' ../local/lib/libcurl.*
-	cd deps/curl && $(MAKE) clean
 
-deps/zlib:
+deps/zlib/configure:
 	cd deps && git clone https://github.com/madler/zlib.git
-	cd deps/zlib && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --static
 
-deps/local/lib/libz.a: deps/zlib
+deps/local/lib/libz.a: deps/zlib/configure
 	mkdir -p deps
+	cd deps/zlib && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --static
 	cd deps/zlib && $(MAKE) install
 
-deps/protobuf-c:
+deps/protobuf-c/configure:
 	cd deps && git clone https://github.com/protobuf-c/protobuf-c.git
-	cd $@ && ./autogen.sh
-	cd $@ && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
+	cd deps/protobuf-c && ./autogen.sh
 
-deps/local/lib/libprotobuf-c.a: deps/protobuf-c
+deps/local/lib/libprotobuf-c.a: deps/protobuf-c/configure
+	cd deps/protobuf-c && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
 	cd deps/protobuf-c && $(MAKE) protobuf-c/libprotobuf-c.la
 	mkdir -p deps/local/lib && mkdir -p deps/local/include/protobuf-c
 	cp deps/protobuf-c/protobuf-c/.libs/libprotobuf-c.a deps/local/lib
 	cp deps/protobuf-c/protobuf-c/protobuf-c.h deps/local/include/protobuf-c
+
+deps/linux-sgx:
+	cd deps && git clone https://github.com/01org/linux-sgx.git
+	cd $@ && git checkout sgx_2.0
+
+deps/linux-sgx-driver:
+	cd deps && git clone https://github.com/01org/linux-sgx-driver.git
+	cd $@ && git checkout sgx_driver_2.0
+
+deps/graphene: deps/linux-sgx-driver
+	cd deps && git clone --recursive https://github.com/oscarlab/graphene.git
+	cd $@ && git checkout e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
+	cd $@ && openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
+# patch -p1 < ../../graphene-sgx-linux-driver-2.1.patch
+# The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
+# Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
+	cd $@ && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.0\n" | $(MAKE) -j1 SGX=1
+
+# I prefer to have all dynamic libraries in one directory. This
+# reduces the effort in the Graphene-SGX manifest file.
+	cd $@ && ln -s /usr/lib/x86_64-linux-gnu/libprotobuf-c.so.1 Runtime/
+	cd $@ && ln -s /usr/lib/libsgx_uae_service.so Runtime/
+	cd $@ && ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
+	cd $@ && ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
+	cd $@ && ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
 
 .PHONY=tests
 tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester

@@ -29,13 +29,7 @@ INCLUDES=-I.. -Ilocal/include -I/opt/intel/sgxsdk/include \
 MUSLCC=$(abspath sgx-lkl/build/host-musl/bin/musl-gcc)
 
 .PHONY=deps
-deps: deps/openssl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
-
-deps/openssl: | sgx-lkl
-	mkdir -p deps && cd deps && git clone https://github.com/openssl/openssl.git
-	cd $@ && git checkout OpenSSL_1_0_2g
-	cd $@ && CC=$(MUSLCC) ./config --prefix=$(abspath local) no-shared -fPIC
-	cd $@ && $(MAKE) -j1 install
+deps: deps/zlib deps/curl deps/protobuf-c deps/wolfssl
 
 deps/zlib: | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/madler/zlib.git
@@ -43,11 +37,11 @@ deps/zlib: | sgx-lkl
 	cd $@ && $(MAKE) install
 
 # curl version 7_47_0 seems to work in combination with Intel's HTTPS proxy ...
-deps/curl: | deps/openssl sgx-lkl
+deps/curl: deps/wolfssl | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/curl/curl.git
 	cd $@ && git checkout curl-7_47_0
 	cd $@ && ./buildconf
-	cd $@ && CC=$(MUSLCC) ./configure --prefix=$(abspath local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --with-ssl=$(abspath local) --disable-shared --with-pic
+	cd $@ && CC=$(MUSLCC) ./configure --prefix=$(abspath local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --without-ssl --with-cyassl=$(abspath local) --disable-shared --with-pic
 	cd $@ && $(MAKE) install
 
 deps/protobuf-c: | sgx-lkl
@@ -63,23 +57,25 @@ deps/wolfssl: | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/wolfSSL/wolfssl
 	cd $@ && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
 	cd $@ && patch -p1 < ../../../wolfssl-sgx-attestation.patch
+	cd $@ && patch -p1 < ../../../00-wolfssl-allow-large-certificate-request-msg.patch
 	cd $@ && ./autogen.sh
-	cd $@ && CC=$(MUSLCC) CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT" ./configure --prefix=$(abspath local) --enable-writedup --enable-static --disable-shared --enable-keygen --enable-certgen --enable-certext # --enable-debug
+	cd $@ && CC=$(MUSLCC) CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT" ./configure --prefix=$(abspath local) --enable-writedup --enable-static --disable-shared --enable-keygen --enable-certgen --enable-certext --enable-tlsv10 # --enable-debug
 	cd $@ && $(MAKE) install
 
+ldpreload.so: CFLAGS+=-DUSE_WOLFSSL
 ldpreload.so: ldpreload.c $(SRC) | sgx-lkl deps
-	sgx-lkl/build/host-musl/bin/musl-gcc -o $@ $^ $(INCLUDES) $(CFLAGSERRORS) -shared -fPIC -Llocal/lib -l:libcurl.a -l:libwolfssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libm.a -l:libz.a -ldl
+	sgx-lkl/build/host-musl/bin/musl-gcc -o $@ $^ $(CFLAGS) $(INCLUDES) $(CFLAGSERRORS) -shared -fPIC -Llocal/lib -l:libcurl.a -l:libwolfssl.a -l:libprotobuf-c.a -l:libm.a -l:libz.a -ldl
 
-sgx-lkl/apps/ratls/Makefile sgx-lkl/apps/ratls/buildenv.sh: | sgx-lkl
+sgx-lkl/apps/ratls/Makefile: | sgx-lkl
 	cp -a ratls sgx-lkl/apps
 
-sgx-lkl/apps/https-server/Makefile sgx-lkl/apps/https-server/buildenv.sh: | sgx-lkl
+sgx-lkl/apps/https-server/Makefile: | sgx-lkl
 	cp -a https-server/ sgx-lkl/apps
 
-sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img: ../sgxlkl-wolfssl-ssl-server sgx-lkl/apps/ratls/Makefile sgx-lkl/apps/ratls/buildenv.sh
+sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img: ../sgxlkl-wolfssl-ssl-server sgx-lkl/apps/ratls/Makefile
 	( cd sgx-lkl/apps/ratls && USER=`whoami` make )
 
-sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img: ldpreload.so sgx-lkl/apps/https-server/Makefile sgx-lkl/apps/https-server/buildenv.sh
+sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img: ldpreload.so sgx-lkl/apps/https-server/Makefile
 	( cd sgx-lkl/apps/https-server && USER=`whoami` make )
 
 ../sgxlkl-wolfssl-ssl-server: | sgx-lkl deps
@@ -92,7 +88,7 @@ clean:
 .PHONY=distclean
 distclean:
 	$(RM) ldpreload.so
-	$(RM) -r sgx-lkl deps/openssl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
+	$(RM) -r sgx-lkl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
 
 EXTERNAL_IFACE ?= eth0
 .PHONY=up-sgxlkl-network

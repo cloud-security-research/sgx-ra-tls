@@ -54,63 +54,11 @@ if [[ ! -d mbedtls ]] ; then
     popd
 fi
 
-if [[ ! -d zlib ]] ; then
-    git clone https://github.com/madler/zlib.git
-    pushd zlib
-    CFLAGS="-fPIC -O2" ./configure --prefix=$(readlink -f ../local) --static
-    make install
-    popd
-fi
-
-if [[ ! -d protobuf-c ]] ; then
-    git clone https://github.com/protobuf-c/protobuf-c.git
-    pushd protobuf-c
-    ./autogen.sh
-    CFLAGS="-fPIC -O2" ./configure --prefix=$(readlink -f ../local) --disable-shared
-    make protobuf-c/libprotobuf-c.la
-    cp protobuf-c/.libs/libprotobuf-c.a ../local/lib
-    mkdir ../local/include/protobuf-c
-    cp protobuf-c/protobuf-c.h ../local/include/protobuf-c
-    popd
-fi
-
-# Linux SGX SDK code
-if [[ ! -d linux-sgx ]] ; then
-    git clone https://github.com/01org/linux-sgx.git
-    pushd linux-sgx
-    git checkout sgx_2.0
-    popd
-fi
-
-if [[ ! -d linux-sgx-driver && $VARIANT == "graphene" ]] ; then
-     git clone https://github.com/01org/linux-sgx-driver.git
-     pushd linux-sgx-driver
-     git checkout sgx_driver_2.0
-     popd
-fi
-
-if [[ ! -d graphene && $VARIANT == "graphene" ]] ; then
-    git clone --recursive https://github.com/oscarlab/graphene.git
-    pushd graphene
-    git checkout e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
-    openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
-    # patch -p1 < ../../graphene-sgx-linux-driver-2.1.patch
-    # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
-    # Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
-    printf "$(readlink -f ../linux-sgx-driver)\n2.0\n" | make SGX=1 || exit 1
-
-    # I prefer to have all dynamic libraries in one directory. This
-    # reduces the effort in the Graphene-SGX manifest file.
-    ln -s /usr/lib/x86_64-linux-gnu/libprotobuf-c.so.1 Runtime/
-    ln -s /usr/lib/libsgx_uae_service.so Runtime/
-    ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
-    ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
-    ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
-    
-    popd
-fi
-
 popd # deps
+
+if [[ $VARIANT == "graphene" ]] ; then
+    make deps/graphene
+fi
 
 # Copy client certificates required to talk to Intel's Attestation
 # Service
@@ -146,6 +94,7 @@ if [ $VARIANT == "scone" ] ; then
 fi
 
 if [ $VARIANT == "sgxlkl" ] ; then
+    make messages.pb-c.c
     make -C sgxlkl -j2 || exit 1
 fi
 
