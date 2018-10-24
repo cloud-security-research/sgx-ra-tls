@@ -179,6 +179,7 @@ mrproper: clean
 	$(RM) -rf deps
 	$(RM) -r openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester
 	$(RM) messages.pb-c.h messages.pb-c.c
+	$(MAKE) -C sgxlkl distclean
 
 .PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper
 
@@ -205,6 +206,77 @@ wolfssl-ra-challenger: tests/ra-challenger.c wolfssl/libra-challenger.a
 
 mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm
+
+.PHONY=deps
+deps: deps/local/lib/libwolfssl.sgx.static.lib.a deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
+
+deps/openssl:
+	cd deps && git clone https://github.com/openssl/openssl.git
+	cd deps/openssl && git checkout OpenSSL_1_0_2g
+	cd deps/openssl && ./config --prefix=$(shell readlink -f deps/local) no-shared -fPIC
+
+deps/local/lib/libcrypto.a deps/local/lib/libssl.a: deps/openssl
+	cd deps/openssl && $(MAKE) && $(MAKE) -j1 install
+
+deps/wolfssl:
+	cd deps && git clone https://github.com/wolfSSL/wolfssl
+	cd deps/wolfssl && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
+	cd deps/wolfssl && patch -p1 < ../../wolfssl-sgx-attestation.patch
+	cd deps/wolfssl && patch -p1 < ../../00-wolfssl-allow-large-certificate-request-msg.patch
+	cd deps/wolfssl && ./autogen.sh
+
+# Add --enable-debug to ./configure for debug build
+# WOLFSSL_ALWAYS_VERIFY_CB ... Always call certificate verification callback, even if verification succeeds
+# KEEP_OUR_CERT ... Keep the certificate around after the handshake
+WOLFSSL_CFLAGS="-fPIC -O2 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
+deps/local/lib/libwolfssl.a: deps/wolfssl
+	cd deps/wolfssl && CFLAGS=$(WOLFSSL_CFLAGS) ./configure --prefix=$(shell readlink -f deps/local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --enable-tlsv10 # --enable-debug
+	cd deps/wolfssl && $(MAKE) install
+
+deps/local/lib/libwolfssl.sgx.static.lib.a: deps/wolfssl
+	cd deps/wolfssl/IDE/LINUX-SGX && make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT"
+	mkdir -p deps/local/lib && cp deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a deps/local/lib
+
+deps/local/lib/libwolfssl.sgx.static.lib.a: deps/local/lib/libwolfssl.a
+
+deps/curl:
+	cd deps && git clone https://github.com/curl/curl.git
+	cd deps/curl && git checkout curl-7_47_0
+	cd deps/curl && ./buildconf
+
+CURL_CONFFLAGS=--prefix=$(shell readlink -f deps/local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --disable-shared
+
+# The phony target libcurl is required as otherwise the rule to build the various libcurl* libraries will be invoked multiple times.
+.PHONY=libcurl
+deps/local/lib/libcurl-wolfssl.a deps/local/lib/libcurl-wolfssl.la deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-openssl.la: libcurl
+libcurl: deps/curl deps/local/lib/libwolfssl.a deps/local/lib/libssl.a deps/local/lib/libz.a
+	cd deps/curl && CFLAGS="-fPIC -O2" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl==$(shell readlink -f deps/local)
+	cd deps/curl && $(MAKE) && $(MAKE) install
+	cd deps/curl && rename 's/libcurl/libcurl-wolfssl/' ../local/lib/libcurl.*
+	cd deps/curl && $(MAKE) clean
+	cd deps/curl && CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
+	cd deps/curl && $(MAKE) && $(MAKE) install
+	cd deps/curl && rename 's/libcurl/libcurl-openssl/' ../local/lib/libcurl.*
+	cd deps/curl && $(MAKE) clean
+
+deps/zlib:
+	cd deps && git clone https://github.com/madler/zlib.git
+	cd deps/zlib && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --static
+
+deps/local/lib/libz.a: deps/zlib
+	mkdir -p deps
+	cd deps/zlib && $(MAKE) install
+
+deps/protobuf-c:
+	cd deps && git clone https://github.com/protobuf-c/protobuf-c.git
+	cd $@ && ./autogen.sh
+	cd $@ && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
+
+deps/local/lib/libprotobuf-c.a: deps/protobuf-c
+	cd deps/protobuf-c && $(MAKE) protobuf-c/libprotobuf-c.la
+	mkdir -p deps/local/lib && mkdir -p deps/local/include/protobuf-c
+	cp deps/protobuf-c/protobuf-c/.libs/libprotobuf-c.a deps/local/lib
+	cp deps/protobuf-c/protobuf-c/protobuf-c.h deps/local/include/protobuf-c
 
 .PHONY=tests
 tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester

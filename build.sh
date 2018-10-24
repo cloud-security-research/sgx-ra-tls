@@ -25,9 +25,6 @@ if [[ ! ( $VARIANT == "scone" ||
     exit 1
 fi
 
-mkdir -p deps
-pushd deps
-
 # Choose compiler to build deps.
 if [[ ( $VARIANT == "graphene" || $VARIANT == "sgxsdk" || $VARIANT == "sgxlkl" ) ]] ; then
     export CC=gcc
@@ -35,20 +32,13 @@ elif [[ $VARIANT == "scone" ]] ; then
     export CC=/usr/local/bin/scone-gcc
 fi
 
+mkdir -p deps
+make -j`nproc` deps
+pushd deps
+
 # The OpenSSL, wolfSSL, mbedtls libraries are necessary for the non-SGX
 # clients. We do not use their package versions since we need them to
 # be compiled with specific flags.
-
-if [[ ! -d openssl ]] ; then
-    git clone https://github.com/openssl/openssl.git
-    pushd openssl
-    git checkout OpenSSL_1_0_2g
-    make clean
-    ./config --prefix=$(readlink -f ../local) no-shared -fPIC
-    make -j8
-    make install
-    popd
-fi
 
 if [[ ! -d mbedtls ]] ; then
     git clone https://github.com/ARMmbed/mbedtls.git
@@ -61,34 +51,6 @@ if [[ ! -d mbedtls ]] ; then
     cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$CC -DCMAKE_C_FLAGS="-fPIC -O2 -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
     make -j`nproc` || exit 1
     cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
-    popd
-fi
-
-if [[ ! -d wolfssl ]] ; then
-    git clone https://github.com/wolfSSL/wolfssl || exit 1
-    pushd wolfssl
-    git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
-    patch -p1 < ../../wolfssl-sgx-attestation.patch || exit 1
-    patch -p1 < ../../00-wolfssl-allow-large-certificate-request-msg.patch || exit 1
-    [ ! -f ./configure ] && ./autogen.sh
-    # Add --enable-debug for debug build
-    # --enable-nginx: #define's WOLFSSL_ALWAYS_VERIFY_CB and
-    # KEEP_OUR_CERT. Without this there seems to be no way to access
-    # the certificate after the handshake.
-    # 
-    # 2017-12-11: --enable-nginx also activates OPENSSLEXTRA. The later
-    # includes symbols that clash with OpenSSL, i.e., wolfSSL and OpenSSL
-    # cannot be linked into the same binary. --enable-opensslcoexists does
-    # not seem to help in this case.
-    WOLFSSL_CFLAGS="-fPIC -O2 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT"
-    CFLAGS="$WOLFSSL_CFLAGS" ./configure --prefix=$(readlink -f ../local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --enable-tlsv10 || exit 1 # --enable-debug
-    make -j`nproc` || exit 1
-    make install || exit 1
-    pushd IDE/LINUX-SGX
-    # Add SGX_DEBUG=1 for debug
-    make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT" || exit 1
-    cp libwolfssl.sgx.static.lib.a ../../../local/lib
-    popd
     popd
 fi
 
@@ -109,36 +71,6 @@ if [[ ! -d protobuf-c ]] ; then
     cp protobuf-c/.libs/libprotobuf-c.a ../local/lib
     mkdir ../local/include/protobuf-c
     cp protobuf-c/protobuf-c.h ../local/include/protobuf-c
-    popd
-fi
-
-# Generate three versions of curl: dependent on OpenSSL, on mbedTLS, or on WolfSSL
-
-if [[ ! -d curl ]] ; then
-    git clone https://github.com/curl/curl.git
-    pushd curl
-    git checkout curl-7_47_0
-    ./buildconf
-    CONFIGUREFLAGS=" --prefix=$(readlink -f ../local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --disable-shared"
-    # CONFIGUREFLAGS+=" --enable-debug"
-
-    CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $CONFIGUREFLAGS --with-ssl=$(readlink -f ../local)
-    make -j`nproc` || exit 1
-    make install || exit 1
-    rename 's/libcurl/libcurl-openssl/' ../local/lib/libcurl.*
-
-    make clean
-    CFLAGS="-fPIC -O2" ./configure $CONFIGUREFLAGS --without-ssl --with-mbedtls=$(readlink -f ../local)
-    make -j`nproc` || exit 1
-    make install || exit 1
-    rename 's/libcurl/libcurl-mbedtls/' ../local/lib/libcurl.*
-
-    make clean
-    CFLAGS="-fPIC -O2" ./configure $CONFIGUREFLAGS --without-ssl --with-cyassl==$(readlink -f ../local)
-    make -j`nproc` || exit 1
-    make install || exit 1
-    rename 's/libcurl/libcurl-wolfssl/' ../local/lib/libcurl.*
-
     popd
 fi
 
