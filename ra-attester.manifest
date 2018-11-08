@@ -1,0 +1,42 @@
+loader.preload = file:deps/graphene/Runtime/libsysdb.so
+loader.env.LD_LIBRARY_PATH = /lib
+loader.debug_type = none
+loader.syscall_symbol = syscalldb
+
+fs.mount.lib.type = chroot
+fs.mount.lib.path = /lib
+fs.mount.lib.uri = file:deps/graphene/Runtime
+
+fs.mount.bin.type = chroot
+fs.mount.bin.path = /bin
+fs.mount.bin.uri = file:/bin
+
+fs.mount.etc.type = chroot
+fs.mount.etc.path = /etc
+fs.mount.etc.uri = file:/etc
+
+sgx.enclave_size = 128M
+sys.brk.size = 4M
+sys.stack.size = 4M
+
+# sgx-related
+sgx.trusted_files.ld = file:deps/graphene/Runtime/ld-linux-x86-64.so.2
+sgx.trusted_files.libc = file:deps/graphene/Runtime/libc.so.6
+sgx.trusted_files.libdl = file:deps/graphene/Runtime/libdl.so.2
+sgx.trusted_files.libm = file:deps/graphene/Runtime/libm.so.6
+sgx.trusted_files.libpthread = file:deps/graphene/Runtime/libpthread.so.0
+sgx.trusted_files.libprotobufc = file:deps/graphene/Runtime/libprotobuf-c.so.1
+sgx.trusted_files.libresolv = file:deps/graphene/Runtime/libresolv.so.2
+sgx.trusted_files.libnssdnsso2 = file:deps/graphene/Runtime/libnss_dns.so.2
+sgx.trusted_files.libcrypto = file:deps/graphene/Runtime/libcrypto.so.1.0.0
+sgx.trusted_files.libz = file:deps/graphene/Runtime/libz.so.1
+sgx.trusted_files.libssl = file:deps/graphene/Runtime/libssl.so.1.0.0
+
+# BUG Graphene cannot handle '-' character in trusted_files name
+
+sgx.trusted_files.cacertificates = file:/etc/ssl/certs/ca-certificates.crt
+sgx.trusted_files.client_ias_key = file:ias-client-key.pem
+sgx.trusted_files.client_ias_cert = file:ias-client-cert.pem
+sgx.trusted_files.etcresolv = file:/etc/resolv.conf
+
+sgx.allowed_files.key = file:key.der

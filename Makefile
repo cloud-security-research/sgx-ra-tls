@@ -186,17 +186,17 @@ mrproper: clean
 
 openssl-ra-attester: tests/ra-attester.c openssl/libnonsdk-ra-attester.a ra_tls_options.c 
 	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
-	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 
 wolfssl-ra-attester: tests/ra-attester.c wolfssl/libnonsdk-ra-attester.a ra_tls_options.c 
 	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-wolfssl.a -l:libprotobuf-c.a -l:libwolfssl.a -lm -l:libz.a -ldl
-	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 
 mbedtls-ra-attester: tests/ra-attester.c mbedtls/libnonsdk-ra-attester.a ra_tls_options.c 
 	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -lm -l:libz.a -ldl
-	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 
 openssl-ra-challenger: tests/ra-challenger.c openssl/libra-challenger.a
@@ -211,12 +211,12 @@ mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 .PHONY=deps
 deps: deps/linux-sgx deps/local/lib/libwolfssl.sgx.static.lib.a deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
 
-deps/openssl:
+deps/openssl/config:
 	cd deps && git clone https://github.com/openssl/openssl.git
 	cd deps/openssl && git checkout OpenSSL_1_0_2g
 	cd deps/openssl && ./config --prefix=$(shell readlink -f deps/local) no-shared -fPIC
 
-deps/local/lib/libcrypto.a deps/local/lib/libssl.a: deps/openssl
+deps/local/lib/libcrypto.a: deps/openssl/config
 	cd deps/openssl && $(MAKE) && $(MAKE) -j1 install
 
 deps/wolfssl/configure:
@@ -237,8 +237,13 @@ deps/local/lib/libwolfssl.a: deps/wolfssl/configure
 	cd deps/wolfssl && CFLAGS="$(CFLAGS)" ./configure $(WOLFSSL_CONFIGURE_FLAGS)
 	cd deps/wolfssl && $(MAKE) install
 
-deps/local/lib/libwolfssl.sgx.static.lib.a: deps/wolfssl/configure
+# Ideally, deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a and
+# deps/local/lib/libwolfssl.a could be built in parallel. Does not
+# work however. Hence, the dependency forces a serial build.
+deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a: deps/local/lib/libwolfssl.a
 	cd deps/wolfssl/IDE/LINUX-SGX && make -f sgx_t_static.mk CFLAGS="-DUSER_TIME -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_KEY_GEN -DWOLFSSL_CERT_GEN -DWOLFSSL_CERT_EXT"
+
+deps/local/lib/libwolfssl.sgx.static.lib.a: deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a
 	mkdir -p deps/local/lib && cp deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a deps/local/lib
 
 deps/local/lib/libwolfssl.sgx.static.lib.a: deps/local/lib/libwolfssl.a
@@ -256,11 +261,11 @@ deps/local/lib/libcurl-wolfssl.a: deps/curl/configure deps/local/lib/libwolfssl.
 	cd deps/curl-wolfssl && $(MAKE)
 	cp deps/curl-wolfssl/lib/.libs/libcurl.a deps/local/lib/libcurl-wolfssl.a
 
-deps/local/lib/libcurl-openssl.a: deps/curl/configure deps/local/lib/libwolfssl.a
+deps/local/lib/libcurl-openssl.a: deps/curl/configure deps/local/lib/libcrypto.a
 	cp -a deps/curl deps/curl-openssl
 	cd deps/curl-openssl && CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
 	cd deps/curl-openssl && $(MAKE) && $(MAKE) install
-	cd deps/curl && rename 's/libcurl/libcurl-openssl/' ../local/lib/libcurl.*
+	rename 's/libcurl/libcurl-openssl/' deps/local/lib/libcurl.*
 
 deps/zlib/configure:
 	cd deps && git clone https://github.com/madler/zlib.git
@@ -289,22 +294,25 @@ deps/linux-sgx-driver:
 	cd deps && git clone https://github.com/01org/linux-sgx-driver.git
 	cd $@ && git checkout sgx_driver_2.0
 
-deps/graphene: deps/linux-sgx-driver
+GRAPHENE_COMMIT?=e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
+
+deps/graphene/Makefile: deps/linux-sgx-driver
 	cd deps && git clone --recursive https://github.com/oscarlab/graphene.git
-	cd $@ && git checkout e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
-	cd $@ && openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
-# patch -p1 < ../../graphene-sgx-linux-driver-2.1.patch
+	cd deps/graphene && git checkout $(GRAPHENE_COMMIT)
+	cd deps/graphene && openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
+
+deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
 # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
 # Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
-	cd $@ && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.0\n" | $(MAKE) -j1 SGX=1
+	cd deps/graphene && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.0\n" | $(MAKE) -j1 SGX=1
 
 # I prefer to have all dynamic libraries in one directory. This
 # reduces the effort in the Graphene-SGX manifest file.
-	cd $@ && ln -s /usr/lib/x86_64-linux-gnu/libprotobuf-c.so.1 Runtime/
-	cd $@ && ln -s /usr/lib/libsgx_uae_service.so Runtime/
-	cd $@ && ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
-	cd $@ && ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
-	cd $@ && ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
+	cd deps/graphene && ln -s /usr/lib/x86_64-linux-gnu/libprotobuf-c.so.1 Runtime/
+	cd deps/graphene && ln -s /usr/lib/libsgx_uae_service.so Runtime/
+	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
+	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
+	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
 
 .PHONY=tests
 tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester

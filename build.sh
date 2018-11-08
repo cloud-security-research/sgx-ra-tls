@@ -57,7 +57,7 @@ fi
 popd # deps
 
 if [[ $VARIANT == "graphene" ]] ; then
-    make deps/graphene
+    make deps/graphene/Runtime/pal-Linux-SGX
 fi
 
 # Copy client certificates required to talk to Intel's Attestation
@@ -66,6 +66,10 @@ fi
 
 if [ $VARIANT == "sgxsdk" ] ; then
     echo "Building wolfSSL SGX library ..."
+    # The "make ... clean"s make sure there is no residual state from
+    # previous builds lying around that might otherwise confuse the
+    # build system.
+    make -f ratls-wolfssl.mk clean || exit 1
     make -f ratls-wolfssl.mk || exit 1
     make -f ratls-wolfssl.mk clean || exit 1
 fi
