@@ -328,3 +328,14 @@ void do_remote_attestation
                                            attn_report);
     free_quote(quote); quote = NULL;
 }
+
+void ra_tls_create_report(
+    sgx_report_t* report
+)
+{
+    sgx_target_info_t target_info = {0, };
+    sgx_report_data_t report_data = {0, };
+    memset(report, 0, sizeof(*report));
+
+    create_report(&target_info, &report_data, report);
+}
