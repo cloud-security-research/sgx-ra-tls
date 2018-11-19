@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <string.h>
 
 #include <sgx_uae_service.h>
 
@@ -24,4 +25,15 @@ void do_remote_attestation
     assert(status == SGX_SUCCESS);
 
     ocall_remote_attestation(&report, opts, attn_report);
+}
+
+void ra_tls_create_report(
+    sgx_report_t* report
+)
+{
+    sgx_target_info_t target_info = {0, };
+    sgx_report_data_t report_data = {0, };
+    memset(report, 0, sizeof(*report));
+
+    sgx_create_report(&target_info, &report_data, report);
 }

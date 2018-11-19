@@ -33,4 +33,8 @@ void create_key_and_x509_pem
     int* pem_cert_len,
     const struct ra_tls_options* opts
 );
+
+void ra_tls_create_report(
+    sgx_report_t* report
+);
 #endif
