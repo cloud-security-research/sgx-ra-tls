@@ -1,7 +1,8 @@
 #include <assert.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 #ifdef OPENSSL
@@ -30,5 +31,19 @@ int main(int argc, char* argv[]) {
     assert(der_crt_len > 0);
 
     assert(0 == verify_sgx_cert_extensions(der_crt, der_crt_len));
+
+    sgx_quote_t quote;
+    get_quote_from_cert(der_crt, der_crt_len, &quote);
+    sgx_report_body_t* body = &quote.report_body;
+
+    printf("Certificate's SGX information:\n");
+    printf("MRENCLAVE = ");
+    for (int i=0; i < SGX_HASH_SIZE; ++i) printf("%02x", body->mr_enclave.m[i]);
+    printf("\n");
+    
+    printf("MRSIGNER  = ");
+    for (int i=0; i < SGX_HASH_SIZE; ++i) printf("%02x", body->mr_signer.m[i]);
+    printf("\n");
+    
     return 0;
 }
