@@ -219,11 +219,21 @@ deps/openssl/config:
 deps/local/lib/libcrypto.a: deps/openssl/config
 	cd deps/openssl && $(MAKE) && $(MAKE) -j1 install
 
-deps/wolfssl/configure:
+# This backported patch is necessary for wolfSSL to handle Intel
+# Attestation Service's (IAS) TLS handshake. IAS sends a gigantic
+# handshake message that is fragmented across multiple TLS
+# records. While this problem is now fixed in upstream wolfSSL, it is
+# less work to simply backport this small patch instead of updating
+# existing wolfSSL patches to work against wolfSSL master.
+wolfssl-2036.patch:
+	wget https://patch-diff.githubusercontent.com/raw/wolfSSL/wolfssl/pull/2036.diff -O $@
+
+deps/wolfssl/configure: wolfssl-2036.patch
 	cd deps && git clone https://github.com/wolfSSL/wolfssl
 	cd deps/wolfssl && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
 	cd deps/wolfssl && patch -p1 < ../../wolfssl-sgx-attestation.patch
 	cd deps/wolfssl && patch -p1 < ../../00-wolfssl-allow-large-certificate-request-msg.patch
+	cd deps/wolfssl && patch -p1 < ../../wolfssl-2036.patch
 	cd deps/wolfssl && ./autogen.sh
 
 # Add --enable-debug to ./configure for debug build
