@@ -172,7 +172,9 @@ mbedtls/ldpreload.so: ldpreload.c
 	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lmbedtls -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
 
 clean:
+	$(RM) ias-ra-openssl.c ias-ra-wolfssl.c
 	$(RM) *.o
+	$(RM) $(LIBS)
 
 mrproper: clean
 	$(MAKE) -f ratls-wolfssl.mk mrproper
