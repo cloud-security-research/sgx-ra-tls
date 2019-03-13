@@ -22,4 +22,11 @@ int verify_sgx_cert_extensions
     uint8_t* der_crt,
     uint32_t der_crt_len
 );
+
+int ecdsa_verify_sgx_cert_extensions
+(
+    uint8_t* der_crt,
+    uint32_t der_crt_len
+);
+
 #endif

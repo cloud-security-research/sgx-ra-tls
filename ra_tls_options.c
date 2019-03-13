@@ -10,3 +10,7 @@ struct ra_tls_options my_ra_tls_options = {
     .ias_cert_file = "./ias-client-cert.pem",
     .ias_server = "test-as.sgx.trustedservices.intel.com:443"
 };
+
+struct ecdsa_ra_tls_options my_ecdsa_ra_tls_options = {
+    .subscription_key = "42ceac9c0d4c41e388ae31a739184557"
+};

@@ -6,6 +6,12 @@ extern const uint8_t ias_root_cert_oid[];
 extern const uint8_t ias_leaf_cert_oid[];
 extern const uint8_t ias_report_signature_oid[];
 
+extern const uint8_t quote_oid[];
+extern const uint8_t pck_crt_oid[];
+extern const uint8_t pck_sign_chain_oid[];
+extern const uint8_t tcb_info_oid[];
+extern const uint8_t tcb_sign_chain_oid[];
+
 extern const size_t ias_oid_len;
 
 void find_oid

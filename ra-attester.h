@@ -16,6 +16,10 @@ struct ra_tls_options {
     const char ias_server[512];
 };
 
+struct ecdsa_ra_tls_options {
+    char subscription_key[32];
+};
+
 void create_key_and_x509
 (
     uint8_t* der_key,
@@ -32,6 +36,15 @@ void create_key_and_x509_pem
     uint8_t* pem_cert,
     int* pem_cert_len,
     const struct ra_tls_options* opts
+);
+
+void ecdsa_create_key_and_x509
+(
+    uint8_t* der_key,
+    int* der_key_len,
+    uint8_t* der_cert,
+    int* der_cert_len,
+    const struct ecdsa_ra_tls_options* opts
 );
 
 void ra_tls_create_report(

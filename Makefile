@@ -3,11 +3,18 @@
 
 # TODO: We must use Curl with OpenSSL (see https://github.com/cloud-security-research/sgx-ra-tls/issues/1). We are stuck with two libs for now.
 
+export DEBUG?=0
+
 export SGX_SDK?=/opt/intel/sgxsdk
-CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include -fPIC
+SGX_DCAP?=/home/thomas/SGXDataCenterAttestationPrimitives/
+
+SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc
+
+CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include $(SGX_DCAP_INC) -fPIC
 CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS+=$(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS+=-DSGX_GROUP_OUT_OF_DATE
+
 
 LIBS=mbedtls/libra-attester.a \
 	mbedtls/libnonsdk-ra-attester.a \
@@ -171,6 +178,16 @@ wolfssl/ldpreload.so: ldpreload.c
 mbedtls/ldpreload.so: ldpreload.c
 	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lmbedtls -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
 
+ecdsa_sample_data.h:
+	xxd -i ecdsa-sample-data/pckCert.pem >> $@
+	xxd -i ecdsa-sample-data/pckcert-rsa2048.pem >> $@
+	xxd -i ecdsa-sample-data/pckSignChain.pem >> $@
+	xxd -i ecdsa-sample-data/quote-ppid-clear.dat >> $@
+	xxd -i ecdsa-sample-data/quote-ppid-rsa3072.dat >> $@
+	xxd -i ecdsa-sample-data/tcbInfo.json >> $@
+	xxd -i ecdsa-sample-data/tcbSignChain.pem >> $@
+	xxd -i ecdsa-sample-data/trustedRootCaCert.pem >> $@
+
 clean:
 	$(RM) ias-ra-openssl.c ias-ra-wolfssl.c
 	$(RM) *.o
@@ -233,9 +250,10 @@ wolfssl-2036.patch:
 deps/wolfssl/configure: wolfssl-2036.patch
 	cd deps && git clone https://github.com/wolfSSL/wolfssl
 	cd deps/wolfssl && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
-	cd deps/wolfssl && patch -p1 < ../../wolfssl-sgx-attestation.patch
-	cd deps/wolfssl && patch -p1 < ../../00-wolfssl-allow-large-certificate-request-msg.patch
-	cd deps/wolfssl && patch -p1 < ../../wolfssl-2036.patch
+	# cd deps/wolfssl && patch -p1 < ../../wolfssl-sgx-attestation.patch
+	# cd deps/wolfssl && patch -p1 < ../../00-wolfssl-allow-large-certificate-request-msg.patch
+	# cd deps/wolfssl && patch -p1 < ../../wolfssl-2036.patch
+	cd deps/wolfssl && patch -p1 < ../../wolfssl.patch
 	cd deps/wolfssl && ./autogen.sh
 
 # Add --enable-debug to ./configure for debug build
