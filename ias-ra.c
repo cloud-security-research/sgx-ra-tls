@@ -39,34 +39,6 @@ size_t accumulate_function(void *ptr, size_t size, size_t nmemb, void *userdata)
 static const char pem_marker_begin[] = "-----BEGIN CERTIFICATE-----";
 static const char pem_marker_end[] = "-----END CERTIFICATE-----";
 
-/* Takes a PEM as input. Strips the PEM header/footer and removes
-   newlines (\n). Result is a base64-encoded DER. */
-static
-void pem_to_base64_der(
-    const char* pem,
-    uint32_t pem_len,
-    char* der,
-    uint32_t* der_len,
-    uint32_t der_max_len
-)
-{
-    assert(strncmp((char*) pem, pem_marker_begin, strlen(pem_marker_begin)) == 0);
-    assert(strncmp((char*) pem + pem_len - strlen(pem_marker_end),
-                   pem_marker_end, strlen(pem_marker_end)) == 0);
-    
-    uint32_t out_len = 0;
-    const char* p = pem + strlen(pem_marker_begin);
-    for (uint32_t i = 0;
-         i < pem_len - strlen(pem_marker_begin) - strlen(pem_marker_end);
-         ++i) {
-        if (p[i] == '\n') continue;
-        assert(out_len <= der_max_len);
-        der[out_len] = p[i];
-        out_len++;
-    }
-    *der_len = out_len;
-}
-
 static
 void extract_certificates_from_response_header
 (
@@ -108,14 +80,9 @@ void extract_certificates_from_response_header
     assert(cert_end != NULL);
     uint32_t cert_len = cert_end - cert_begin + strlen(pem_marker_end);
 
-    /* This is an overapproximation: after converting from PEM to
-       base64-encoded DER the actual size will be less than
-       cert_len. */
     assert(cert_len <= sizeof(attn_report->ias_sign_cert));
-    pem_to_base64_der(cert_begin, cert_len,
-                      (char*) attn_report->ias_sign_cert,
-                      &attn_report->ias_sign_cert_len,
-                      sizeof(attn_report->ias_sign_cert));
+    memcpy(attn_report->ias_sign_cert, cert_begin, cert_len);
+    attn_report->ias_sign_cert_len = cert_len;
     
     cert_begin = memmem(cert_end,
                         unescaped_len - (cert_end - unescaped),
@@ -130,10 +97,8 @@ void extract_certificates_from_response_header
     cert_len = cert_end - cert_begin + strlen(pem_marker_end);
 
     assert(cert_len <= sizeof(attn_report->ias_sign_ca_cert));
-    pem_to_base64_der(cert_begin, cert_len,
-                      (char*) attn_report->ias_sign_ca_cert,
-                      &attn_report->ias_sign_ca_cert_len,
-                      sizeof(attn_report->ias_sign_ca_cert));
+    memcpy((char*) attn_report->ias_sign_ca_cert, cert_begin, cert_len);
+    attn_report->ias_sign_ca_cert_len = cert_len;
 
     curl_free(unescaped);
     unescaped = NULL;
@@ -267,10 +232,9 @@ void obtain_attestation_verification_report
                               sizeof(attn_report->ias_report_signature),
                               &attn_report->ias_report_signature_len);
 
-        attn_report->ias_report_len = sizeof(attn_report->ias_report);
-        base64_encode((uint8_t*) body.data, body.len,
-                      attn_report->ias_report, &attn_report->ias_report_len);
-        attn_report->ias_report_len -= 1;
+        assert(sizeof(attn_report->ias_report) >= body.len);
+        memcpy(attn_report->ias_report, body.data, body.len);
+        attn_report->ias_report_len = body.len;
 
         extract_certificates_from_response_header(curl,
                                                   header.data, header.len,

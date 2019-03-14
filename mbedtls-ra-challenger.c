@@ -23,74 +23,6 @@
 extern unsigned char ias_sign_ca_cert_der[];
 extern unsigned int ias_sign_ca_cert_der_len;
 
-static
-void extract_x509_extension
-(
-    uint8_t* ext,
-    int ext_len,
-    const uint8_t* oid,
-    size_t oid_len,
-    uint8_t* data,
-    uint32_t* data_len,
-    uint32_t data_max_len
-)
-{
-    uint8_t* base64_data;
-    size_t base64_data_len;
-    
-    find_oid(ext, ext_len, oid, oid_len,
-             &base64_data, &base64_data_len);
-    
-    assert(base64_data != NULL);
-    assert(base64_data_len <= data_max_len);
-
-    size_t out_len;
-    int ret;
-    ret = mbedtls_base64_decode(data,
-                                data_max_len,
-                                &out_len,
-                                base64_data,
-                                base64_data_len);
-
-    assert(ret == 0);
-    assert(out_len <= UINT32_MAX);
-    *data_len = (uint32_t) out_len;
-}
-
-/* Extract extensions from X509 and decode base64. */
-static
-void extract_x509_extensions
-(
-    uint8_t* ext,
-    int ext_len,
-    attestation_verification_report_t* attn_report
-)
-{
-    extract_x509_extension(ext, ext_len,
-                           ias_response_body_oid, ias_oid_len,
-                           attn_report->ias_report,
-                           &attn_report->ias_report_len,
-                           sizeof(attn_report->ias_report));
-
-    extract_x509_extension(ext, ext_len,
-                           ias_root_cert_oid, ias_oid_len,
-                           attn_report->ias_sign_ca_cert,
-                           &attn_report->ias_sign_ca_cert_len,
-                           sizeof(attn_report->ias_sign_ca_cert));
-
-    extract_x509_extension(ext, ext_len,
-                           ias_leaf_cert_oid, ias_oid_len,
-                           attn_report->ias_sign_cert,
-                           &attn_report->ias_sign_cert_len,
-                           sizeof(attn_report->ias_sign_cert));
-
-    extract_x509_extension(ext, ext_len,
-                           ias_report_signature_oid, ias_oid_len,
-                           attn_report->ias_report_signature,
-                           &attn_report->ias_report_signature_len,
-                           sizeof(attn_report->ias_report_signature));
-}
-
 void get_quote_from_report(const uint8_t* report /* in */,
                            const int report_len  /* in */,
                            sgx_quote_t* quote)
@@ -211,9 +143,13 @@ int verify_ias_report_signature
     mbedtls_x509_crt cert;
     mbedtls_x509_crt_init(&cert);
     int ret;
+    /* mbedtls_x509_crt_parse requires PEM-encoded certificates to be
+       zero terminated (How braindead is this?). */
+    assert(attn_report->ias_sign_cert_len < sizeof(attn_report->ias_sign_cert));
+    attn_report->ias_sign_cert[attn_report->ias_sign_cert_len] = '\0';
     ret = mbedtls_x509_crt_parse(&cert,
                                  attn_report->ias_sign_cert,
-                                 attn_report->ias_sign_cert_len);
+                                 attn_report->ias_sign_cert_len + 1); /* +1 for the zero byte */
     assert(ret == 0);
 
     // Extract RSA public key
@@ -242,6 +178,7 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
     mbedtls_x509_crt cacert;
     mbedtls_x509_crt_init(&cacert);
     int ret;
+
     ret = mbedtls_x509_crt_parse(&cacert,
                                  ias_sign_ca_cert_der,
                                  ias_sign_ca_cert_der_len);
@@ -249,14 +186,17 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
 
     mbedtls_x509_crt cert;
     mbedtls_x509_crt_init(&cert);
+    /* mbedtls_x509_crt_parse requires PEM-encoded certificates to be
+       zero terminated (How brainded is this?). */
+    assert(attn_report->ias_sign_cert_len < sizeof(attn_report->ias_sign_cert));
+    attn_report->ias_sign_cert[attn_report->ias_sign_cert_len] = '\0';
     ret = mbedtls_x509_crt_parse(&cert,
                                  attn_report->ias_sign_cert,
-                                 attn_report->ias_sign_cert_len);
+                                 attn_report->ias_sign_cert_len + 1); /* +1 for the zero byte. */
     assert(ret == 0);
 
     uint32_t flags;
-    ret = mbedtls_x509_crt_verify(&cert, &cacert, NULL, NULL, &flags,
-                                  NULL, NULL);
+    ret = mbedtls_x509_crt_verify(&cert, &cacert, NULL, NULL, &flags, NULL, NULL);
     assert(ret == 0);
     
     return ret;
@@ -283,6 +223,17 @@ int verify_sgx_cert_extensions
                             crt.v3_ext.len,
                             &attn_report);
 
+    uint8_t base64[sizeof(attn_report.ias_report_signature)];
+    memcpy(base64, attn_report.ias_report_signature, attn_report.ias_report_signature_len);
+    
+    size_t decoded_len;
+    ret = mbedtls_base64_decode(attn_report.ias_report_signature,
+                                sizeof(attn_report.ias_report_signature),
+                                &decoded_len, base64, attn_report.ias_report_signature_len);
+    assert(0 == ret);
+    assert(decoded_len <= UINT32_MAX);
+    attn_report.ias_report_signature_len = (uint32_t) decoded_len;
+    
     ret = verify_ias_certificate_chain(&attn_report);
     assert(ret == 0);
 

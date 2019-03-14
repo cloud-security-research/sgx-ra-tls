@@ -14,3 +14,21 @@ void find_oid
      const unsigned char* oid, size_t oid_len,
      unsigned char** val, size_t* len
 );
+
+void extract_x509_extensions
+(
+    uint8_t* ext,
+    int ext_len,
+    attestation_verification_report_t* attn_report
+);
+
+void extract_x509_extension
+(
+    uint8_t* ext,
+    int ext_len,
+    const uint8_t* oid,
+    size_t oid_len,
+    uint8_t* data,
+    uint32_t* data_len,
+    uint32_t data_max_len
+);

@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include <openssl/evp.h>
+#include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
@@ -17,33 +18,18 @@
 extern unsigned char ias_sign_ca_cert_der[];
 extern unsigned int ias_sign_ca_cert_der_len;
 
-/* EVP_DecodeBlock pads its output with \0 if the output length is not
-   a multiple of 3. Check if the base64 string is padded at the end
-   and adjust the output length. */
-static
-int EVP_DecodeBlock_wrapper
-(
-    unsigned char *out,
-    const unsigned char *in,
-    int in_len
-)
-{
-    /* Use a temporary output buffer. We do not want to disturb the
-       original output buffer with extraneous \0 bytes. */
-    unsigned char buf[in_len];
-    
-    int ret = EVP_DecodeBlock(buf, in, in_len);
-    assert(ret != -1);
-    if (in[in_len-1] == '=' && in[in_len-2] == '=') {
-        ret -= 2;
-    } else if (in[in_len-1] == '=') {
-        ret -= 1;
-    }
-    
-    memcpy(out, buf, ret);
-    return ret;
-}
+/* The functions get_extension(), get_and_decode_ext() and
+   openssl_extract_x509_extensions() use the OpenSSL API to extract
+   X.509 extensions from the certificate. The generic function
+   ra-challenger.c:extract_x509_extensions() serves the same purpose
+   and its implementation operates on DER-encoded data and hence is
+   reusable across different TLS libraries.
 
+   We keep the OpenSSL-specific implementation in case we want to
+   switch back in the future.
+ */
+
+#if 0
 /**
  * Given an X509 extension OID, return its data.
  */
@@ -101,40 +87,32 @@ void get_and_decode_ext
     
     get_extension(crt, oid, oid_len, &ext, &ext_len);
     
-    assert(ext_len * 3 <= data_max_len * 4);
-    int ret = EVP_DecodeBlock_wrapper(data, ext, ext_len);
-    
-    assert(ret != -1);
-    *data_len = ret;
+    assert(ext_len <= data_max_len);
+    memcpy(data, ext, ext_len);
+    *data_len = ext_len;
 }
 
-/* Extract extensions from X509 and decode base64. */
 static
-void extract_x509_extensions
+void openssl_extract_x509_extensions
 (
-    const X509* crt,
+    X509* crt,
     attestation_verification_report_t* attn_report
 )
 {
     bzero(attn_report, sizeof(*attn_report));
-
-    get_and_decode_ext(crt,
-                       ias_response_body_oid + 2, ias_oid_len - 2,
+    get_and_decode_ext(crt, ias_response_body_oid + 2, ias_oid_len - 2,
                        attn_report->ias_report, sizeof(attn_report->ias_report),
                        &attn_report->ias_report_len);
     
-    get_and_decode_ext(crt,
-                       ias_root_cert_oid + 2, ias_oid_len - 2,
+    get_and_decode_ext(crt, ias_root_cert_oid + 2, ias_oid_len - 2,
                        attn_report->ias_sign_ca_cert, sizeof(attn_report->ias_sign_ca_cert),
                        &attn_report->ias_sign_ca_cert_len);
 
-    get_and_decode_ext(crt,
-                       ias_leaf_cert_oid + 2, ias_oid_len - 2,
+    get_and_decode_ext(crt, ias_leaf_cert_oid + 2, ias_oid_len - 2,
                        attn_report->ias_sign_cert, sizeof(attn_report->ias_sign_cert),
                        &attn_report->ias_sign_cert_len);
 
-    get_and_decode_ext(crt,
-                       ias_report_signature_oid + 2, ias_oid_len - 2,
+    get_and_decode_ext(crt, ias_report_signature_oid + 2, ias_oid_len - 2,
                        attn_report->ias_report_signature, sizeof(attn_report->ias_report_signature),
                        &attn_report->ias_report_signature_len);
 
@@ -144,6 +122,7 @@ void extract_x509_extensions
            attn_report->ias_sign_ca_cert_len != 0 &&
            attn_report->ias_report_len != 0);
 }
+#endif
 
 void get_quote_from_cert
 (
@@ -164,9 +143,6 @@ void get_quote_from_cert
     int num_of_exts = sk_X509_EXTENSION_num(exts);
     assert(num_of_exts >= 0);
 
-    unsigned char ias_report[2048];
-    int ias_report_len;
-    
     for (int i=0; i < num_of_exts; i++) {
         X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
         assert(ex != NULL);
@@ -174,18 +150,11 @@ void get_quote_from_cert
         assert(obj != NULL);
 
         if (0 == memcmp(obj->data, ias_response_body_oid + 2, obj->length)) {
-            
-            assert(ex->value->length * 3 <= (int) sizeof(ias_report) * 4);
-            int ret = EVP_DecodeBlock_wrapper(ias_report,
-                                              ex->value->data,
-                                              ex->value->length);
-            assert(ret != -1);
-            ias_report_len = ret;
-            break;
+            get_quote_from_report(ex->value->data, ex->value->length, q);
+            return;
         }
     }
-    
-    get_quote_from_report(ias_report, ias_report_len, q);
+    assert(0);
 }
 
 void get_quote_from_report
@@ -258,20 +227,15 @@ int verify_ias_report_signature
     attestation_verification_report_t* attn_report
 )
 {
-    X509* crt = NULL;
-    int ret;
-
-    const unsigned char* p = attn_report->ias_sign_cert;
-    crt = d2i_X509(NULL,
-                   &p,
-                   attn_report->ias_sign_cert_len);
+    BIO* bio = BIO_new_mem_buf(attn_report->ias_sign_cert, attn_report->ias_sign_cert_len);
+    X509* crt = PEM_read_bio_X509(bio, NULL, NULL, NULL);
     assert(crt != NULL);
 
     EVP_PKEY* key = X509_get_pubkey(crt);
     assert(key != NULL);
 
     EVP_MD_CTX* ctx = EVP_MD_CTX_create();
-    ret = EVP_VerifyInit_ex(ctx, EVP_sha256(), NULL);
+    int ret = EVP_VerifyInit_ex(ctx, EVP_sha256(), NULL);
     assert(ret == 1);
 
     ret = EVP_VerifyUpdate(ctx, attn_report->ias_report, attn_report->ias_report_len);
@@ -284,19 +248,19 @@ int verify_ias_report_signature
     assert(ret == 1);
 
     EVP_MD_CTX_destroy(ctx);
+    BIO_free(bio);
 
     return 0;                   /* success */
 }
 
 static
 int verify_ias_certificate_chain(attestation_verification_report_t* attn_report) {
-    (void) attn_report;
-
-    const unsigned char* p = attn_report->ias_sign_cert;
-    X509* crt = d2i_X509(NULL, &p, attn_report->ias_sign_cert_len);
+    
+    BIO* bio = BIO_new_mem_buf(attn_report->ias_sign_cert, attn_report->ias_sign_cert_len);
+    X509* crt = PEM_read_bio_X509(bio, NULL, NULL, NULL);
     assert(crt != NULL);
 
-    p = ias_sign_ca_cert_der;
+    const uint8_t* p = ias_sign_ca_cert_der;
     X509* cacrt = d2i_X509(NULL, &p, ias_sign_ca_cert_der_len);
     assert(crt != NULL);
 
@@ -310,6 +274,7 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
     
     X509_STORE_CTX_free(ctx);
     X509_STORE_free(s);
+    BIO_free(bio);
     
     return 0;                   /* 1 .. fail, 0 .. success */
 }
@@ -362,13 +327,26 @@ int verify_sgx_cert_extensions
 {
     attestation_verification_report_t attn_report;
 
-    int ret;
-
     const unsigned char* p = der_crt;
     X509* crt = d2i_X509(NULL, &p, der_crt_len);
     assert(crt != NULL);
 
-    extract_x509_extensions(crt, &attn_report);
+    extract_x509_extensions(crt->cert_info->enc.enc, crt->cert_info->enc.len,
+                            &attn_report);
+
+    /* Base64 decode IAS report signature. */
+    uint8_t base64[sizeof(attn_report.ias_report_signature)];
+    memcpy(base64, attn_report.ias_report_signature, attn_report.ias_report_signature_len);
+    assert((attn_report.ias_report_signature_len % 4) == 0);
+    int ret = EVP_DecodeBlock(attn_report.ias_report_signature,
+                              base64, attn_report.ias_report_signature_len);
+    assert(ret > 0);
+    /* Adjust length of decoded data. EVP_DecodeBlock may pad the
+       output with 1 or 2 zero bytes. Remove the zero bytes from the
+       true output length. */
+    if (attn_report.ias_report_signature[ret - 1] == '\0') ret--;
+    if (attn_report.ias_report_signature[ret - 1] == '\0') ret--;
+    attn_report.ias_report_signature_len = ret;
 
     ret = verify_ias_certificate_chain(&attn_report);
     assert(ret == 0);

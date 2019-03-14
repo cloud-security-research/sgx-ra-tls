@@ -6,7 +6,10 @@
 #define _GNU_SOURCE
 
 #include <assert.h>
+#include <stdint.h>
 #include <string.h>
+
+#include "ra.h"
 
 #if SGX_SDK
 /* SGX SDK does not have this. */
@@ -51,4 +54,61 @@ void find_oid
     *len  =  p[i++] << 8;
     *len +=  p[i++];
     *val  = &p[i++];
+}
+
+void extract_x509_extension
+(
+    uint8_t* ext,
+    int ext_len,
+    const uint8_t* oid,
+    size_t oid_len,
+    uint8_t* data,
+    uint32_t* data_len,
+    uint32_t data_max_len
+)
+{
+    uint8_t* ext_data;
+    size_t ext_data_len;
+    
+    find_oid(ext, ext_len, oid, oid_len, &ext_data, &ext_data_len);
+    
+    assert(ext_data != NULL);
+    assert(ext_data_len <= data_max_len);
+    memcpy(data, ext_data, ext_data_len);
+    *data_len = ext_data_len;
+}
+
+/**
+ * Extract all extensions.
+ */
+void extract_x509_extensions
+(
+    uint8_t* ext,
+    int ext_len,
+    attestation_verification_report_t* attn_report
+)
+{
+    extract_x509_extension(ext, ext_len,
+                           ias_response_body_oid, ias_oid_len,
+                           attn_report->ias_report,
+                           &attn_report->ias_report_len,
+                           sizeof(attn_report->ias_report));
+
+    extract_x509_extension(ext, ext_len,
+                           ias_root_cert_oid, ias_oid_len,
+                           attn_report->ias_sign_ca_cert,
+                           &attn_report->ias_sign_ca_cert_len,
+                           sizeof(attn_report->ias_sign_ca_cert));
+
+    extract_x509_extension(ext, ext_len,
+                           ias_leaf_cert_oid, ias_oid_len,
+                           attn_report->ias_sign_cert,
+                           &attn_report->ias_sign_cert_len,
+                           sizeof(attn_report->ias_sign_cert));
+
+    extract_x509_extension(ext, ext_len,
+                           ias_report_signature_oid, ias_oid_len,
+                           attn_report->ias_report_signature,
+                           &attn_report->ias_report_signature_len,
+                           sizeof(attn_report->ias_report_signature));
 }

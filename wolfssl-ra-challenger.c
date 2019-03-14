@@ -21,68 +21,6 @@ extern unsigned char ias_sign_ca_cert_der[];
 extern unsigned int ias_sign_ca_cert_der_len;
 
 static
-void extract_x509_extension
-(
-    uint8_t* ext,
-    int ext_len,
-    const uint8_t* oid,
-    size_t oid_len,
-    uint8_t* data,
-    uint32_t* data_len,
-    uint32_t data_max_len
-)
-{
-    uint8_t* base64_data;
-    size_t base64_data_len;
-    
-    find_oid(ext, ext_len, oid, oid_len,
-             &base64_data, &base64_data_len);
-    
-    assert(base64_data != NULL);
-    assert(base64_data_len <= data_max_len);
-
-    int ret;
-    *data_len = data_max_len;
-    ret = Base64_Decode(base64_data, base64_data_len,
-                        data, data_len);
-    assert(ret == 0);
-}
-
-/* Extract extensions from X509 and decode base64. */
-static
-void extract_x509_extensions
-(
-    uint8_t* ext,
-    int ext_len,
-    attestation_verification_report_t* attn_report
-)
-{
-    extract_x509_extension(ext, ext_len,
-                           ias_response_body_oid, ias_oid_len,
-                           attn_report->ias_report,
-                           &attn_report->ias_report_len,
-                           sizeof(attn_report->ias_report));
-
-    extract_x509_extension(ext, ext_len,
-                           ias_root_cert_oid, ias_oid_len,
-                           attn_report->ias_sign_ca_cert,
-                           &attn_report->ias_sign_ca_cert_len,
-                           sizeof(attn_report->ias_sign_ca_cert));
-
-    extract_x509_extension(ext, ext_len,
-                           ias_leaf_cert_oid, ias_oid_len,
-                           attn_report->ias_sign_cert,
-                           &attn_report->ias_sign_cert_len,
-                           sizeof(attn_report->ias_sign_cert));
-
-    extract_x509_extension(ext, ext_len,
-                           ias_report_signature_oid, ias_oid_len,
-                           attn_report->ias_report_signature,
-                           &attn_report->ias_report_signature_len,
-                           sizeof(attn_report->ias_report_signature));
-}
-
-static
 void get_quote_from_extension(uint8_t* ext, size_t ext_len, sgx_quote_t* q) {
 
     uint8_t report[2048];
@@ -206,7 +144,14 @@ int verify_ias_report_signature
     DecodedCert crt;
     int ret;
 
-    InitDecodedCert(&crt, (byte*) attn_report->ias_sign_cert, attn_report->ias_sign_cert_len, NULL);
+    uint8_t der[4096];
+    int der_len;
+    der_len = wolfSSL_CertPemToDer(attn_report->ias_sign_cert, attn_report->ias_sign_cert_len,
+                                   der, sizeof(der),
+                                   CERT_TYPE);
+    assert(der_len > 0);
+    
+    InitDecodedCert(&crt, der, der_len, NULL);
     InitSignatureCtx(&crt.sigCtx, NULL, INVALID_DEVID);
     ret = ParseCertRelative(&crt, CERT_TYPE, NO_VERIFY, 0);
     assert(ret == 0);
@@ -250,7 +195,7 @@ int verify_ias_certificate_chain(attestation_verification_report_t* attn_report)
     
     ret = wolfSSL_CertManagerVerifyBuffer(cm, attn_report->ias_sign_cert,
                                           attn_report->ias_sign_cert_len,
-                                          SSL_FILETYPE_ASN1);
+                                          SSL_FILETYPE_PEM);
     assert(ret == SSL_SUCCESS);
     
     wolfSSL_CertManagerFree(cm);
@@ -315,10 +260,15 @@ int verify_sgx_cert_extensions
     ret = ParseCertRelative(&crt, CERT_TYPE, NO_VERIFY, 0);
     assert(ret == 0);
     
-    extract_x509_extensions(crt.extensions,
-                            crt.extensionsSz,
-                            &attn_report);
+    extract_x509_extensions(crt.extensions, crt.extensionsSz, &attn_report);
 
+    /* Base64 decode attestation report signature. */
+    uint8_t sig_base64[sizeof(attn_report.ias_report_signature)];
+    memcpy(sig_base64, attn_report.ias_report_signature, attn_report.ias_report_signature_len);
+    int rc = Base64_Decode(sig_base64, attn_report.ias_report_signature_len,
+                           attn_report.ias_report_signature, &attn_report.ias_report_signature_len);
+    assert(0 == rc);
+    
     ret = verify_ias_certificate_chain(&attn_report);
     assert(ret == 0);
 
