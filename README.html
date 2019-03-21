@@ -101,5 +101,25 @@ Each client outputs a bunch of connection-related information, such as the serve
 <h3 id="sgx-client">SGX client</h3>
 <p>The Graphene-SGX client wolfssl-client-mutual only works in combination with wolfssl-ssl-server-mutual.</p>
 <pre><code>SGX=1 ./deps/graphene/Runtime/pal_loader ./wolfssl-client-mutual</code></pre>
+<h1 id="ecdsa-based-attestation">ECDSA-based Attestation</h1>
+<p>ECDSA-based attestation is an alternative to the EPID-based attestation model for environments where platform privacy less of a concern and/or the specific deployment precludes interaction with external services (e.g., Intel Attestation Service) during the attestation process. Section X.X of the <a href="whitepaper.pdf">RA-TLS whitepaper</a> provides additional information on supporting ECDSA-based attestation within RA-TLS.</p>
+<h2 id="background">Background</h2>
+<h2 id="pre-requisites">Pre-requisites</h2>
+<p>Follow the installation instructions at <a href="https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release" class="uri">https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release</a> to prepare the system to compile the RA-TLS library and its sample programs. Ensure you can successfully run the quote generation and quote verification sample programs from the DCAP software distribution.</p>
+<p>In particular, the Intel SGX Data Center Attestation Primitives (DCAP) come with their own SGX driver and require the SGX SDK v2.4.</p>
+<p>The Dockerfile <a href="Dockerfile-ecdsa.template" class="uri">Dockerfile-ecdsa.template</a> documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.</p>
+<h2 id="build-1">Build</h2>
+<p>We provide a <a href="Dockerfile-ecdsa.template">Dockerfile template</a> to build everything in a container. To create the Docker image issue <code>make docker-image-ecdsa</code>. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.</p>
+<p>If the platform meets all the requirements for ECDSA-based attestation, EPID attestation should continue to work as expected. However, when switching between EPID and ECDSA, run &quot;make mrproper&quot; to clean the state before rebuilding the stack.</p>
+<pre><code>ECDSA=1 ./build.sh graphene &amp;&amp; ECDSA=1 make wolfssl-ra-attester &amp;&amp; ECDSA=1 make wolfssl-ra-challenger &amp;&amp; make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample</code></pre>
+<p>Go get a coffee. It will take a while.</p>
+<h2 id="run-1">Run</h2>
+<p>We provide two sample programs to demonstrate ECDSA-based attestation within RA-TLS: An attester to generate an RA-TLS certificate and key; a challenger to verify the ECDSA-based RA-TLS certificate.</p>
+<p>To run the attester execute</p>
+<pre><code>deps/graphene/Runtime/pal-Linux-SGX ./wolfssl-ra-attester ecdsa</code></pre>
+<p>This program outputs an ECDSA-based RA-TLS certificate and the corresponding private key in ./ecdsa-crt.der and ./ecdsa-key.der, respectively.</p>
+<p>To verify the RA-TLS certificate run</p>
+<pre><code>LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger ecdsa-crt.der ecdsa</code></pre>
+<h2 id="resources">Resources</h2>
 </body>
 </html>

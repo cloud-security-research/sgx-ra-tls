@@ -50,19 +50,6 @@ void get_quote_from_report(const uint8_t* report /* in */,
     free(quote_bin);
 }
 
-static
-void get_quote_from_extension(uint8_t* ext, size_t ext_len, sgx_quote_t* q) {
-
-    uint8_t report[2048];
-    uint32_t report_len;
-    
-    extract_x509_extension(ext, ext_len,
-                           ias_response_body_oid, ias_oid_len,
-                           report, &report_len, sizeof(report));
-    
-    get_quote_from_report(report, report_len, q);
-}
-
 void get_quote_from_cert
 (
     const uint8_t* der_crt,

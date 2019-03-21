@@ -3,10 +3,11 @@
 
 # TODO: We must use Curl with OpenSSL (see https://github.com/cloud-security-research/sgx-ra-tls/issues/1). We are stuck with two libs for now.
 
-export DEBUG?=0
-
 export SGX_SDK?=/opt/intel/sgxsdk
-SGX_DCAP?=/home/thomas/SGXDataCenterAttestationPrimitives/
+
+SGX_DCAP_URI=https://github.com/thomasknauth/SGXDataCenterAttestationPrimitives.git
+SGX_DCAP_COMMIT=962632364bcfc827bf6473b814338e4865a709cf
+SGX_DCAP?=deps/SGXDataCenterAttestationPrimitives/
 
 SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc
 
@@ -15,6 +16,9 @@ CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS+=$(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS+=-DSGX_GROUP_OUT_OF_DATE
 
+ifdef ECDSA
+CFLAGS+=-DRATLS_ECDSA
+endif
 
 LIBS=mbedtls/libra-attester.a \
 	mbedtls/libnonsdk-ra-attester.a \
@@ -30,13 +34,15 @@ LIBS=mbedtls/libra-attester.a \
 .PHONY=all
 all: $(LIBS)
 
-wolfssl-client : deps/wolfssl-examples/tls/client-tls.c wolfssl/libra-challenger.a
+wolfssl-client: deps/wolfssl-examples/tls/client-tls.c wolfssl/libra-challenger.a
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -Lwolfssl -Ldeps/local/lib -l:libra-challenger.a -l:libwolfssl.a -lm
 
 wolfssl-client-mutual: deps/wolfssl-examples/tls/client-tls.c ra_tls_options.c wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
-	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS)
+	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS) $(SGX_DCAP_LIB)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
 mbedtls-client : deps/mbedtls/programs/ssl/ssl_client1.c mbedtls/libra-challenger.a
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -Lmbedtls -Ldeps/local/lib -l:libra-challenger.a -l:libmbedtls.a -l:libmbedx509.a -l:libmbedcrypto.a
@@ -67,7 +73,7 @@ nonsdk-ra-attester.o: messages.pb-c.c
 mbedtls/libra-tls.so : mbedtls mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(CC) -shared -o $@ $(filter %.o, $^) -Ldeps/local/lib -l:libcurl-openssl.a -l:libmbedtls.a -l:libmbedx509.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
 
-wolfssl/libra-challenger.a : wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o
+wolfssl/libra-challenger.a: wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o ecdsa-sample-data/real/sample_data.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 ias-ra-%.c: ias-ra.c
@@ -75,10 +81,15 @@ ias-ra-%.c: ias-ra.c
 
 ias-ra-wolfssl.o: CFLAGS += -DUSE_WOLFSSL
 
+wolfssl-ra-attester.o: ecdsa-sample-data/real/sample_data.h
+wolfssl-ra-challenger.o: ecdsa-sample-data/real/sample_data.h
+
 wolfssl/libra-attester.a: wolfssl wolfssl-ra-attester.o wolfssl-ra.o ias-ra-wolfssl.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-wolfssl/libnonsdk-ra-attester.a: wolfssl wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+ecdsa-ra-attester.o: ecdsa-aesmd-messages.pb-c.c
+
+wolfssl/libnonsdk-ra-attester.a: wolfssl wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o ecdsa-ra-attester.o ecdsa-aesmd-messages.pb-c.o messages.pb-c.o sgx_report.o ecdsa-sample-data/real/sample_data.o
 		$(AR) rcs $@ $(filter %.o, $^)
 
 wolfssl/libra-tls.so: wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
@@ -100,6 +111,10 @@ MBEDTLS_RA_ATTESTER_SRC=mbedtls-ra-attester.c ra-challenger.c
 MBEDTLS_RA_CHALLENGER_SRC=mbedtls-ra-challenger.c ias_sign_ca_cert.c
 NONSDK_RA_ATTESTER_SRC=nonsdk-ra-attester.c messages.pb-c.c sgx_report.S
 
+ecdsa-aesmd-messages.pb-c.c:
+	cp $(SGX_DCAP)/SampleCode/QuoteServiceSample/App/ecdsa-aesmd-messages.proto .
+	protoc-c ecdsa-aesmd-messages.proto --c_out=.
+
 messages.pb-c.c:
 	( cd deps/linux-sgx/psw/ae/common/proto/ ; protoc-c messages.proto --c_out=. )
 	cp deps/linux-sgx/psw/ae/common/proto/messages.pb-c.c deps/linux-sgx/psw/ae/common/proto/messages.pb-c.h .
@@ -117,10 +132,12 @@ MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
 	$(NONSDK_RA_ATTESTER_SRC) ias-ra-openssl.c
 MBEDTLS_SSL_SERVER_LIBS=-l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
 
-mbedtls-ssl-server : $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
+mbedtls-ssl-server: $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
 	$(CC) $(MBEDTLS_SSL_SERVER_SRC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib/ $(MBEDTLS_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
 WOLFSSL_SSL_SERVER_SRC=deps/wolfssl-examples/tls/server-tls.c ra_tls_options.c
 
@@ -129,20 +146,26 @@ WOLFSSL_SSL_SERVER_LIBS=-l:libcurl-wolfssl.a -l:libwolfssl.a -l:libprotobuf-c.a 
 wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader wolfssl/libnonsdk-ra-attester.a
 	$(CC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib -L. -Lwolfssl $(WOLFSSL_SSL_SERVER_SRC) -l:libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
 wolfssl-ssl-server-mutual: deps/wolfssl-examples/tls/server-tls.c ra_tls_options.c ssl-server.manifest deps/graphene/Runtime/pal_loader wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
-	$(CC) -o $@ $(CFLAGSERRORS) -DSGX_RATLS_MUTUAL $(SSL_SERVER_INCLUDES) $(filter %.c, $^) -Ldeps/local/lib wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
+	$(CC) -o $@ $(CFLAGSERRORS) -DSGX_RATLS_MUTUAL $(SSL_SERVER_INCLUDES) $(filter %.c, $^) -Ldeps/local/lib $(SGX_DCAP_LIB) wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS) -l:libQuoteVerification.so -ldl
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
 libsgx_ra_tls_wolfssl.a:
 	make -f ratls-wolfssl.mk
 	rm -f wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o  # BUGFIX: previous Makefile compiles these .o files with incorrect C flags
 
 deps/wolfssl-examples/SGX_Linux/App: deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a libsgx_ra_tls_wolfssl.a sgxsdk-ra-attester_u.c ias-ra.c
+ifndef ECDSA
 	cp sgxsdk-ra-attester_u.c ias-ra.c deps/wolfssl-examples/SGX_Linux/untrusted
 	$(MAKE) -C deps/wolfssl-examples/SGX_Linux SGX_MODE=HW SGX_DEBUG=1 SGX_WOLFSSL_LIB=$(shell readlink -f deps/wolfssl/IDE/LINUX-SGX) SGX_SDK=$(SGX_SDK) WOLFSSL_ROOT=$(shell readlink -f deps/wolfssl) SGX_RA_TLS_LIB=$(shell readlink -f .)
+endif
 
 README.html : README.md
 	pandoc --from markdown_github --to html --standalone $< --output $@
@@ -178,6 +201,18 @@ wolfssl/ldpreload.so: ldpreload.c
 mbedtls/ldpreload.so: ldpreload.c
 	$(CC) -o $@ $^ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -shared -fPIC -Lmbedtls -Ldeps/local/lib -l:libnonsdk-ra-attester.a -l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
 
+# xxd produces a header file. When included in multiple .c files it
+# leads to "multiple definition errors". Produce a .h and .c file
+# to avoid this.
+ecdsa-sample-data/real/sample_data.c: ecdsa-sample-data/real/*.pem ecdsa-sample-data/real/*.dat
+	$(RM) $@
+	for f in ecdsa-sample-data/real/*.pem ecdsa-sample-data/real/*.dat ; do \
+		xxd -i $$f >> $@ ; \
+	done
+
+ecdsa-sample-data/real/sample_data.h: ecdsa-sample-data/real/sample_data.c
+	cat $^ | sed 's/ = .*;/;/' | sed '/^  /d' | sed 's/ = {/;/' | sed '/^};$$/d' | sed 's/^/extern /' > $@
+
 ecdsa_sample_data.h:
 	xxd -i ecdsa-sample-data/pckCert.pem >> $@
 	xxd -i ecdsa-sample-data/pckcert-rsa2048.pem >> $@
@@ -198,7 +233,7 @@ mrproper: clean
 	$(RM) $(EXECS) $(LIBS)
 	$(RM) -rf deps
 	$(RM) -r openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester
-	$(RM) messages.pb-c.h messages.pb-c.c
+	$(RM) messages.pb-c.h messages.pb-c.c ecdsa-aesmd-messages.pb-c.c ecdsa-aesmd-messages.pb-c.h
 	$(MAKE) -C sgxlkl distclean
 
 .PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper
@@ -206,29 +241,39 @@ mrproper: clean
 openssl-ra-attester: tests/ra-attester.c openssl/libnonsdk-ra-attester.a ra_tls_options.c 
 	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
-wolfssl-ra-attester: tests/ra-attester.c wolfssl/libnonsdk-ra-attester.a ra_tls_options.c 
+wolfssl-ra-attester: tests/ra-attester.c wolfssl/libnonsdk-ra-attester.a ra_tls_options.c
 	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-wolfssl.a -l:libprotobuf-c.a -l:libwolfssl.a -lm -l:libz.a -ldl
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
 mbedtls-ra-attester: tests/ra-attester.c mbedtls/libnonsdk-ra-attester.a ra_tls_options.c 
 	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -lm -l:libz.a -ldl
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
+ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
+endif
 
 openssl-ra-challenger: tests/ra-challenger.c openssl/libra-challenger.a
 	$(CC) $(CFLAGS) -DOPENSSL $^ -o $@ -l:libcrypto.a -ldl
 
+wolfssl-ra-challenger: deps/local/lib/libQuoteVerification.so
 wolfssl-ra-challenger: tests/ra-challenger.c wolfssl/libra-challenger.a
-	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libwolfssl.a -lm
+	$(CC) $(CFLAGS) $(filter %.c %.a, $^) -o $@ -Ldeps/local/lib -l:libwolfssl.a -l:libQuoteVerification.so -ldl -lm
 
 mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm
 
 .PHONY=deps
-deps: deps/linux-sgx deps/local/lib/libwolfssl.sgx.static.lib.a deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
+deps: deps/linux-sgx deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
+ifndef ECDSA
+deps: deps/local/lib/libwolfssl.sgx.static.lib.a
+endif
 
 deps/openssl/config:
 	cd deps && git clone https://github.com/openssl/openssl.git
@@ -260,8 +305,13 @@ deps/wolfssl/configure: wolfssl-2036.patch
 # WOLFSSL_ALWAYS_VERIFY_CB ... Always call certificate verification callback, even if verification succeeds
 # KEEP_OUR_CERT ... Keep the certificate around after the handshake
 # --enable-tlsv10 ... required by libcurl
+# 2019-03-19 removed --enable-intelasm configure flag. The Celeron NUC I am developing this, does not support AVX.
 WOLFSSL_CFLAGS+=-DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT
-WOLFSSL_CONFIGURE_FLAGS+=--prefix=$(shell readlink -f deps/local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --with-pic --disable-examples --disable-crypttests --enable-aesni --enable-intelasm --enable-tlsv10 # --enable-debug
+WOLFSSL_CONFIGURE_FLAGS+=--prefix=$(shell readlink -f deps/local) --enable-writedup --enable-static --enable-keygen --enable-certgen --enable-certext --with-pic --disable-examples --disable-crypttests --enable-aesni --enable-tlsv10
+ifdef DEBUG
+WOLFSS_CFLAGS+=--enable-debug
+endif
+
 deps/local/lib/libwolfssl.a: CFLAGS+= $(WOLFSSL_CFLAGS)
 deps/local/lib/libwolfssl.a: deps/wolfssl/configure
 	cd deps/wolfssl && CFLAGS="$(CFLAGS)" ./configure $(WOLFSSL_CONFIGURE_FLAGS)
@@ -283,11 +333,14 @@ deps/curl/configure:
 	cd deps/curl && git checkout curl-7_47_0
 	cd deps/curl && ./buildconf
 
-CURL_CONFFLAGS=--prefix=$(shell readlink -f deps/local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --disable-shared
+CURL_CONFFLAGS=--prefix=$(shell readlink -f deps/local) --without-libidn --without-librtmp --without-libssh2 --without-libmetalink --without-libpsl --disable-ldap --disable-ldaps --disable-shared
+ifdef DEBUG
+CURL_CONFFLAGS+=--enable-debug
+endif
 
 deps/local/lib/libcurl-wolfssl.a: deps/curl/configure deps/local/lib/libwolfssl.a
 	cp -a deps/curl deps/curl-wolfssl
-	cd deps/curl-wolfssl && CFLAGS="-fPIC -O2" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
+	cd deps/curl-wolfssl && CFLAGS="-fPIC" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
 	cd deps/curl-wolfssl && $(MAKE)
 	cp deps/curl-wolfssl/lib/.libs/libcurl.a deps/local/lib/libcurl-wolfssl.a
 
@@ -320,21 +373,60 @@ deps/linux-sgx:
 	cd deps && git clone https://github.com/01org/linux-sgx.git
 	cd $@ && git checkout sgx_2.0
 
-deps/linux-sgx-driver:
+deps/SGXDataCenterAttestationPrimitives:
+ifdef ECDSA
+	cd deps && git clone $(SGX_DCAP_URI)
+	cd $@ && git checkout $(SGX_DCAP_COMMIT)
+else
+	mkdir -p $@
+endif
+
+deps/linux-sgx-driver: deps/SGXDataCenterAttestationPrimitives
+ifndef ECDSA
 	cd deps && git clone https://github.com/01org/linux-sgx-driver.git
 	cd $@ && git checkout sgx_driver_2.0
+else
+	cp -a $(SGX_DCAP)/driver/linux deps/linux-sgx-driver
+endif
 
+deps/local/lib/libQuoteVerification.so: deps/SGXDataCenterAttestationPrimitives
+ifdef DEBUG
+	cd deps/SGXDataCenterAttestationPrimitives/QuoteVerification/Src && ./debug
+	cp deps/SGXDataCenterAttestationPrimitives/QuoteVerification/Src/Build/Debug/out/lib/libQuoteVerification.so $@
+else
+	cd deps/SGXDataCenterAttestationPrimitives/QuoteVerification/Src && ./release
+	cp deps/SGXDataCenterAttestationPrimitives/QuoteVerification/Src/Build/Release/out/lib/libQuoteVerification.so $@
+endif
+
+ifdef ECDSA
+# TODO merge FLC changes into Graphene master.
+GRAPHENE_COMMIT?=9e30c4ba090c2d9e1cc629918a603a7f87474820
+GRAPHENE_BRANCH?=flexible_launch_control
+GRAPHENE_URI?=https://github.com/thomasknauth/graphene.git
+else
 GRAPHENE_COMMIT?=e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
+GRAPHENE_URI?=https://github.com/oscarlab/graphene.git
+endif
 
 deps/graphene/Makefile: deps/linux-sgx-driver
-	cd deps && git clone --recursive https://github.com/oscarlab/graphene.git
+	cd deps && git clone --recursive $(GRAPHENE_URI)
+ifdef ECDSA
+# TODO upstream changes to graphene-sgx-driver
+	rm -rf deps/graphene/Pal/src/host/Linux-SGX/sgx-driver
+	cd deps/graphene/Pal/src/host/Linux-SGX && git clone https://github.com/thomasknauth/graphene-sgx-driver.git sgx-driver
+	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && git checkout ecdsa
+endif
 	cd deps/graphene && git checkout $(GRAPHENE_COMMIT)
 	cd deps/graphene && openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
 
 deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
 # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
 # Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
+ifndef ECDSA
 	cd deps/graphene && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.0\n" | $(MAKE) -j1 SGX=1
+else
+	cd deps/graphene && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.4\n" | $(MAKE) -j1 SGX=1
+endif
 
 # I prefer to have all dynamic libraries in one directory. This
 # reduces the effort in the Graphene-SGX manifest file.
@@ -343,6 +435,15 @@ deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
+
+KERNEL_VERSION=$(shell uname -r)
+
+Dockerfile-ecdsa: Dockerfile-ecdsa.template
+	sed 's/\$$KERNEL_VERSION/$(KERNEL_VERSION)/' Dockerfile-ecdsa.template > Dockerfile-ecdsa
+
+.PHONY=docker-image-ecdsa
+docker-image-ecdsa: Dockerfile-ecdsa
+	docker build -t ratls-ecdsa -f Dockerfile-ecdsa .
 
 .PHONY=tests
 tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester

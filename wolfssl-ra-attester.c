@@ -24,6 +24,8 @@
 #include "ra.h"
 #include "wolfssl-ra.h"
 #include "ra-attester.h"
+#include "ra-attester_private.h"
+#include "ecdsa-ra-attester.h"
 #include "ra_private.h"
 
 #include "ecdsa_sample_data.h"
@@ -170,10 +172,10 @@ wolfssl_create_key_and_x509
 
 static void binary_to_base16
 (
- const uint8_t* binary,
- uint32_t binary_len,
- char* base16,
- uint32_t base16_len
+    const uint8_t* binary,
+    uint32_t binary_len,
+    char* base16,
+    uint32_t base16_len
 )
 {
     /* + 1 for terminating null byte. */
@@ -184,6 +186,27 @@ static void binary_to_base16
     }
 }
 
+static void ecdsa_get_quote_from_quote_service
+(
+    const sgx_report_data_t* report_data,
+    uint8_t* quote,
+    uint32_t* quote_len
+)
+{
+    uint32_t quote_size = 0;
+    sgx_target_info_t qe_target_info = {0, };
+    int sockfd = connect_to_quote_service();
+    get_target_info_from_quote_service(sockfd, &qe_target_info, &quote_size);
+    assert(quote_size <= *quote_len);
+    
+    sgx_report_t report;
+    create_report(&qe_target_info, report_data, &report);
+    get_quote_from_quote_service(sockfd, &report, quote, quote_size);
+    *quote_len = quote_size;
+    
+    close(sockfd);
+}
+
 static void ecdsa_get_quote
 (
     const sgx_report_data_t* report_data,
@@ -191,7 +214,10 @@ static void ecdsa_get_quote
     uint32_t* quote_len
 )
 {
-    /* This talks to some local ip:port service to get the quote. */
+#ifndef SGX_SIMULATION
+    ecdsa_get_quote_from_quote_service(report_data,
+                                       quote, quote_len);
+#else
     (void) report_data;
     
     assert(ecdsa_sample_data_quote_ppid_rsa3072_dat_len <= *quote_len);
@@ -225,6 +251,9 @@ static void parse_response_header_get_pck_cert
                              headers_len,
                              header_tag,
                              strlen(header_tag));
+    if (header_begin == NULL) {
+        fprintf(stderr, "HTTP headers: %.*s\n", (int) headers_len, headers);
+    }
     assert(header_begin != NULL);
     header_begin += strlen(header_tag);
     char* header_end = memmem(header_begin,
@@ -238,10 +267,14 @@ static void parse_response_header_get_pck_cert
     *pck_cert_chain_len = header_end - header_begin;
 }
 
-static void get_pck_cert(
+static
+void get_pck_cert
+(
     const char* url,
     const struct ecdsa_ra_tls_options* opts,
-    ecdsa_attestation_evidence_t* evidence) {
+    ecdsa_attestation_evidence_t* evidence
+)
+{
     CURL *curl;
     CURLcode res;
 
@@ -251,7 +284,7 @@ static void get_pck_cert(
 
     curl = curl_easy_init();
     if (curl) {
-        // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+        /* curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); */
         curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);

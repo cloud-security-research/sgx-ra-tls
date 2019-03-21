@@ -37,6 +37,11 @@ sgx.trusted_files.libssl = file:deps/graphene/Runtime/libssl.so.1.0.0
 sgx.trusted_files.cacertificates = file:/etc/ssl/certs/ca-certificates.crt
 sgx.trusted_files.client_ias_key = file:ias-client-key.pem
 sgx.trusted_files.client_ias_cert = file:ias-client-cert.pem
-sgx.trusted_files.etcresolv = file:/etc/resolv.conf
 
-sgx.allowed_files.key = file:key.der
+sgx.allowed_files.etcresolv = file:/etc/resolv.conf
+sgx.allowed_files.ecdsa_key = file:ecdsa-key.der
+sgx.allowed_files.ecdsa_crt = file:ecdsa-crt.der
+sgx.allowed_files.epid_key = file:epid-key.der
+sgx.allowed_files.epid_crt = file:epid-crt.der
+
+sgx.disable_avx = 1

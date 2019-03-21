@@ -19,6 +19,11 @@ do
             shift # past argument
             shift # past value
             ;;
+        -b|--branch)
+            REPO_BRANCH="$2"
+            shift
+            shift
+            ;;
         -k|--keep)
             CMD=" ; bash"
             shift # past argument
@@ -34,11 +39,12 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 pushd $TEMP_DIR
 git clone $REPO_DIR
 cd $(basename $REPO_DIR)
+[ -n "$REPO_BRANCH" ] && git checkout $REPO_BRANCH
 
 # --privileged=true is required for SGX-LKL only. The build process
 # for SGX-LKL wants to mount things, uses iptables, etc.
 
-docker run --device=/dev/isgx --device=/dev/gsgx \
+docker run --device=/dev/isgx --device=/dev/sgx --device=/dev/gsgx \
        --privileged=true \
        -v /var/run/aesmd:/var/run/aesmd \
        -v$(pwd):/project \

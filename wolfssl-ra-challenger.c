@@ -1,3 +1,8 @@
+/**
+ * wolfSSL-based implementation of the RA-TLS challenger API
+ * (cf. ra-challenger.h).
+ */
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -12,56 +17,21 @@
 #include <wolfssl/wolfcrypt/sha256.h>
 #include <wolfssl/wolfcrypt/signature.h>
 
+#ifdef RATLS_ECDSA
+#include <SgxEcdsaAttestation/QuoteVerification.h>
+#endif
+
 #include "ra.h"
 #include "wolfssl-ra.h"
 #include "ra-challenger.h"
 #include "ra-challenger_private.h"
 
+#ifdef RATLS_ECDSA
+#include "ecdsa-sample-data/real/sample_data.h"
+#endif
+
 extern unsigned char ias_sign_ca_cert_der[];
 extern unsigned int ias_sign_ca_cert_der_len;
-
-/* Extract extensions from X509 and decode base64. */
-static
-void ecdsa_extract_x509_extensions
-(
-    uint8_t* ext,
-    int ext_len,
-    ecdsa_attestation_evidence_t* evidence
-)
-{
-    extract_x509_extension(ext, ext_len, quote_oid, ias_oid_len,
-                           evidence->quote, &evidence->quote_len,
-                           sizeof(evidence->quote));
-
-    extract_x509_extension(ext, ext_len, pck_crt_oid, ias_oid_len,
-                           evidence->pck_crt, &evidence->pck_crt_len,
-                           sizeof(evidence->pck_crt));
-
-    extract_x509_extension(ext, ext_len, pck_sign_chain_oid, ias_oid_len,
-                           evidence->pck_sign_chain, &evidence->pck_sign_chain_len,
-                           sizeof(evidence->pck_sign_chain));
-
-    extract_x509_extension(ext, ext_len, tcb_info_oid, ias_oid_len,
-                           evidence->tcb_info, &evidence->tcb_info_len,
-                           sizeof(evidence->tcb_info));
-    
-    extract_x509_extension(ext, ext_len, tcb_sign_chain_oid, ias_oid_len,
-                           evidence->tcb_sign_chain, &evidence->tcb_sign_chain_len,
-                           sizeof(evidence->tcb_sign_chain));
-}
-
-static
-void get_quote_from_extension(uint8_t* ext, size_t ext_len, sgx_quote_t* q) {
-
-    uint8_t report[2048];
-    uint32_t report_len;
-    
-    extract_x509_extension(ext, ext_len,
-                           ias_response_body_oid, ias_oid_len,
-                           report, &report_len, sizeof(report));
-    
-    get_quote_from_report(report, report_len, q);
-}
 
 void get_quote_from_cert
 (
@@ -271,10 +241,8 @@ int verify_enclave_quote_status
     return 1;
 }
 
-/**
- * @return 0 if verified successfully, 1 otherwise.
- */
-int verify_sgx_cert_extensions
+static
+int epid_verify_sgx_cert_extensions
 (
     uint8_t* der_crt,
     uint32_t der_crt_len
@@ -321,9 +289,8 @@ int verify_sgx_cert_extensions
     return 0;
 }
 
-/**
- * @return 0 if verified successfully, 1 otherwise.
- */
+#ifdef RATLS_ECDSA
+static
 int ecdsa_verify_sgx_cert_extensions
 (
     uint8_t* der_crt,
@@ -346,4 +313,22 @@ int ecdsa_verify_sgx_cert_extensions
     FreeDecodedCert(&crt);
     
     return 1;
+}
+#endif
+
+int verify_sgx_cert_extensions
+(
+    uint8_t* der_crt,
+    uint32_t der_crt_len
+)
+{
+    if (is_epid_ratls_cert(der_crt, der_crt_len)) {
+        return epid_verify_sgx_cert_extensions(der_crt, der_crt_len);
+    } else {
+#ifdef RATLS_ECDSA
+        return ecdsa_verify_sgx_cert_extensions(der_crt, der_crt_len);
+#else
+        assert(0);
+#endif
+    }
 }

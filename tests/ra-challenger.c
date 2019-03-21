@@ -18,45 +18,27 @@
  * This is a simple unit test for the verification logic.
  */
 int main(int argc, char* argv[]) {
-    (void) argc;
-    (void) argv;
 
 #ifdef OPENSSL
     OpenSSL_add_all_algorithms();
 #endif
 
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s certificate [epid|ecdsa]\n", argv[0]);
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s certificate\n", argv[0]);
         return 1;
     }
     
-    uint8_t der_crt[16*1024];
-
     int fd = open(argv[1], O_RDONLY);
     struct stat st;
     fstat(fd, &st);
-    assert(st.st_size <= (int) sizeof(der_crt));
-    int32_t der_crt_len = read(fd, der_crt, sizeof(der_crt));
-    assert(der_crt_len > 0);
+    uint8_t der_crt[st.st_size];
+    int32_t der_crt_len = read(fd, der_crt, st.st_size);
+    assert(der_crt_len == st.st_size);
 
-    if (0 == strcmp(argv[2], "epid")) {
-        assert(0 == verify_sgx_cert_extensions(der_crt, der_crt_len));
-    } else if (0 == strcmp(argv[2], "ecdsa")) {
-        assert(0 == ecdsa_verify_sgx_cert_extensions(der_crt, der_crt_len));
-    }
+    int rc = verify_sgx_cert_extensions(der_crt, der_crt_len);
+    printf("SGX RA-TLS certificate verification ... %s\n", (rc == 0) ? "SUCCESS" : "FAIL");
 
-    sgx_quote_t quote;
-    get_quote_from_cert(der_crt, der_crt_len, &quote);
-    sgx_report_body_t* body = &quote.report_body;
-
-    printf("Certificate's SGX information:\n");
-    printf("MRENCLAVE = ");
-    for (int i=0; i < SGX_HASH_SIZE; ++i) printf("%02x", body->mr_enclave.m[i]);
-    printf("\n");
-    
-    printf("MRSIGNER  = ");
-    for (int i=0; i < SGX_HASH_SIZE; ++i) printf("%02x", body->mr_signer.m[i]);
-    printf("\n");
+    dprintf_ratls_cert(STDOUT_FILENO, der_crt, der_crt_len);
     
     return 0;
 }

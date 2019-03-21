@@ -4,9 +4,18 @@ FROM ubuntu:16.04
 # RUN sed -i 's/security\./old-releases\./g' /etc/apt/sources.list && sed -i 's/archive\./old-releases\./g' /etc/apt/sources.list
 
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends coreutils git wget openssh-client build-essential cmake libssl-dev libprotobuf-dev autoconf libtool libprotobuf-c-dev protobuf-c-compiler ca-certificates automake
+RUN apt-get install -y --no-install-recommends coreutils git wget openssh-client build-essential cmake libssl-dev libprotobuf-dev autoconf libtool libprotobuf-c-dev protobuf-c-compiler ca-certificates automake pkgconf
+
 # Graphene requirements
 RUN apt-get install -y --no-install-recommends  python gawk python-protobuf python-crypto socat
+
+# Install kernel headers so that Graphene can build the kernel module
+# inside the container. The driver built inside the container is not
+# actually used. The particular kernel version should not matter - just
+# install a recent version.
+
+RUN apt-get install -y --no-install-recommends linux-headers-4.4.0-141-generic
+
 # SCONE requirements
 RUN apt-get install -y --no-install-recommends libprotoc-dev pkgconf protobuf-compiler # to compile libprotobuf-c
 # SGX-LKL

@@ -116,10 +116,10 @@ static void hex_print(uint8_t* str, size_t len) {
 }
 #endif
 
-static
-void create_report(
+void create_report
+(
     sgx_target_info_t* target_info,
-    sgx_report_data_t* report_data,
+    const sgx_report_data_t* report_data,
     sgx_report_t* report
 )
 {
