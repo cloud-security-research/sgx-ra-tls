@@ -7,11 +7,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <curl/curl.h>
-
 #include <sgx_uae_service.h>
 
+#ifdef RATLS_ECDSA
+#include <curl/curl.h>
+
 #include <sgx_quote_3.h>
+#endif
 
 #include <wolfssl/options.h>
 #include <wolfssl/ssl.h>
@@ -25,10 +27,11 @@
 #include "wolfssl-ra.h"
 #include "ra-attester.h"
 #include "ra-attester_private.h"
+#ifdef RATLS_ECDSA
 #include "ecdsa-ra-attester.h"
+#include "ecdsa-sample-data/real/sample_data.h"
+#endif
 #include "ra_private.h"
-
-#include "ecdsa_sample_data.h"
 
 /**
  * Caller must allocate memory for certificate.
@@ -79,6 +82,7 @@ void generate_x509
     *der_crt_len = certSz;
 }
 
+#ifdef RATLS_ECDSA
 /**
  * Generate RA-TLS certificate containing ECDSA-based attestation evidence.
  * 
@@ -130,6 +134,7 @@ void ecdsa_generate_x509
     assert(certSz > 0);
     *der_crt_len = certSz;
 }
+#endif
 
 static void
 wolfssl_create_key_and_x509
@@ -170,6 +175,7 @@ wolfssl_create_key_and_x509
                   &attestation_report);
 }
 
+#ifdef RATLS_ECDSA
 static void binary_to_base16
 (
     const uint8_t* binary,
@@ -238,7 +244,8 @@ struct buffer_and_size {
     size_t len;
 };
 
-static void parse_response_header_get_pck_cert
+static
+void parse_response_header_get_pck_cert
 (
     const char* headers,
     size_t headers_len,
@@ -336,7 +343,8 @@ void get_pck_cert
     curl_global_cleanup();
 }
 
-static void parse_response_header_tcb_info_cert_chain
+static
+void parse_response_header_tcb_info_cert_chain
 (
     const char* headers,
     size_t headers_len,
@@ -417,10 +425,13 @@ static void curl_get_tcb_info
     curl_global_cleanup();
 }
 
-static void http_get_tcb_info (
+static
+void http_get_tcb_info
+(
     ecdsa_attestation_evidence_t* evidence,
     const struct ecdsa_ra_tls_options* opts
-) {
+)
+{
     assert(NULL != evidence->pck_crt);
     assert(evidence->pck_crt_len > 0);
     (void) opts;
@@ -456,7 +467,8 @@ static void http_get_tcb_info (
     curl_get_tcb_info(fmspc_base16, evidence);
 }
 
-static void ecdsa_get_tcb_info
+static
+void ecdsa_get_tcb_info
 (
     ecdsa_attestation_evidence_t* evidence,
     const struct ecdsa_ra_tls_options* opts
@@ -520,8 +532,8 @@ static void ecdsa_get_tcb_info
     http_get_tcb_info(evidence, opts);
 }
 
-static void
-collect_attestation_evidence
+static
+void collect_attestation_evidence
 (
     const sgx_report_data_t* report_data,
     const struct ecdsa_ra_tls_options* opts,
@@ -573,6 +585,21 @@ ecdsa_wolfssl_create_key_and_x509
     ecdsa_generate_x509(&genKey, der_cert, der_cert_len, &evidence);
 }
 
+void ecdsa_create_key_and_x509
+(
+    uint8_t* der_key,  /* out */
+    int* der_key_len,  /* in/out */
+    uint8_t* der_cert, /* out */
+    int* der_cert_len, /* in/out */
+    const struct ecdsa_ra_tls_options* opts /* in */
+)
+{
+    ecdsa_wolfssl_create_key_and_x509(der_key, der_key_len,
+                                der_cert, der_cert_len,
+                                opts);
+}
+#endif
+
 #ifdef WOLFSSL_SGX
 time_t XTIME(time_t* tloc) {
     time_t x = 1512498557; /* Dec 5, 2017, 10:29 PDT */
@@ -597,20 +624,6 @@ void create_key_and_x509
 )
 {
     wolfssl_create_key_and_x509(der_key, der_key_len,
-                                der_cert, der_cert_len,
-                                opts);
-}
-
-void ecdsa_create_key_and_x509
-(
-    uint8_t* der_key,  /* out */
-    int* der_key_len,  /* in/out */
-    uint8_t* der_cert, /* out */
-    int* der_cert_len, /* in/out */
-    const struct ecdsa_ra_tls_options* opts /* in */
-)
-{
-    ecdsa_wolfssl_create_key_and_x509(der_key, der_key_len,
                                 der_cert, der_cert_len,
                                 opts);
 }

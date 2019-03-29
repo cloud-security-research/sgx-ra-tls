@@ -33,8 +33,22 @@ int main(int argc, char* argv[]) {
                         der_crt, &der_crt_len,
                         &my_ra_tls_options);
 
-    fwrite(der_crt, der_crt_len, 1, stdout);
-    fflush(stdout);
+    if (0 == strcmp(argv[1], "epid")) {
+        create_key_and_x509(der_key, &der_key_len,
+                            der_crt, &der_crt_len,
+                            &my_ra_tls_options);
+    } else if (0 == strcmp(argv[1], "ecdsa")) {
+#ifdef RATLS_ECDSA
+        ecdsa_create_key_and_x509(der_key, &der_key_len,
+                                  der_crt, &der_crt_len,
+                                  &my_ecdsa_ra_tls_options);
+#else
+        assert(0 && "not supported");
+#endif
+    } else {
+        fprintf(stderr, "Usage: %s [epid|ecdsa]\n", argv[0]);
+        return 1;
+    }
 
     if (argc > 1 && (0 == strcmp(argv[1], "--dump-key"))) {
         dump_key(der_key, der_key_len);

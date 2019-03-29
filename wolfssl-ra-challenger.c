@@ -327,8 +327,10 @@ int verify_sgx_cert_extensions
     } else {
 #ifdef RATLS_ECDSA
         return ecdsa_verify_sgx_cert_extensions(der_crt, der_crt_len);
-#else
-        assert(0);
 #endif
     }
+    assert(0);
+    // Avoid compiler error: control reaches end of non-void function
+    // [-Werror=return-type]
+    return -1;
 }

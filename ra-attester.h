@@ -38,6 +38,7 @@ void create_key_and_x509_pem
     const struct ra_tls_options* opts
 );
 
+#ifdef RATLS_ECDSA
 void ecdsa_create_key_and_x509
 (
     uint8_t* der_key,
@@ -46,6 +47,7 @@ void ecdsa_create_key_and_x509
     int* der_cert_len,
     const struct ecdsa_ra_tls_options* opts
 );
+#endif
 
 void ra_tls_create_report(
     sgx_report_t* report

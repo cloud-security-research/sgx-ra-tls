@@ -10,10 +10,10 @@
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
 
-#include "ra.h"
 #include "ra-attester.h"
-#include "ra-challenger_private.h"
+#include "ra.h"
 #include "ra_private.h"
+#include "ra-challenger_private.h"
 
 static const uint32_t SHA256_DIGEST_SIZE = 256 / 8;
 

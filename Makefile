@@ -34,8 +34,13 @@ LIBS=mbedtls/libra-attester.a \
 .PHONY=all
 all: $(LIBS)
 
+WOLFSSL_CLIENT_LIBS=-l:libra-challenger.a -l:libwolfssl.a -lm
+ifdef ECDSA
+WOLFSSL_CLIENT_LIBS+=-l:libQuoteVerification.so -ldl
+wolfssl-client: deps/local/lib/libQuoteVerification.so
+endif
 wolfssl-client: deps/wolfssl-examples/tls/client-tls.c wolfssl/libra-challenger.a
-	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -Lwolfssl -Ldeps/local/lib -l:libra-challenger.a -l:libwolfssl.a -lm
+	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -Lwolfssl -Ldeps/local/lib $(WOLFSSL_CLIENT_LIBS)
 
 wolfssl-client-mutual: deps/wolfssl-examples/tls/client-tls.c ra_tls_options.c wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS) $(SGX_DCAP_LIB)
@@ -59,21 +64,21 @@ wolfssl:
 openssl:
 	mkdir -p $@
 
-mbedtls/libra-challenger.a : mbedtls mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o
+mbedtls/libra-challenger.a : mbedtls ra.o mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-mbedtls/libra-attester.a : mbedtls mbedtls-ra-attester.o ias-ra-openssl.o
+mbedtls/libra-attester.a : mbedtls ra.o mbedtls-ra-attester.o ias-ra-openssl.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-mbedtls/libnonsdk-ra-attester.a : mbedtls mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+mbedtls/libnonsdk-ra-attester.a : mbedtls ra.o mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 nonsdk-ra-attester.o: messages.pb-c.c
 
-mbedtls/libra-tls.so : mbedtls mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+mbedtls/libra-tls.so : mbedtls ra.o mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(CC) -shared -o $@ $(filter %.o, $^) -Ldeps/local/lib -l:libcurl-openssl.a -l:libmbedtls.a -l:libmbedx509.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
 
-wolfssl/libra-challenger.a: wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o ecdsa-sample-data/real/sample_data.o
+wolfssl/libra-challenger.a: wolfssl ra.o wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o ecdsa-sample-data/real/sample_data.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 ias-ra-%.c: ias-ra.c
@@ -89,16 +94,19 @@ wolfssl/libra-attester.a: wolfssl wolfssl-ra-attester.o wolfssl-ra.o ias-ra-wolf
 
 ecdsa-ra-attester.o: ecdsa-aesmd-messages.pb-c.c
 
-wolfssl/libnonsdk-ra-attester.a: wolfssl wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o ecdsa-ra-attester.o ecdsa-aesmd-messages.pb-c.o messages.pb-c.o sgx_report.o ecdsa-sample-data/real/sample_data.o
+ifdef ECDSA
+wolfssl/libnonsdk-ra-attester.a: ecdsa-aesmd-messages.pb-c.o ecdsa-ra-attester.o ecdsa-sample-data/real/sample_data.o
+endif
+wolfssl/libnonsdk-ra-attester.a: wolfssl ra.o wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 		$(AR) rcs $@ $(filter %.o, $^)
 
-wolfssl/libra-tls.so: wolfssl wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+wolfssl/libra-tls.so: wolfssl ra.o wolfssl-ra-challenger.o wolfssl-ra.o ra-challenger.o ias_sign_ca_cert.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(CC) -shared -o $@ $(filter %.o, $^) -Ldeps/local/lib -l:libcurl-wolfssl.a -l:libwolfssl.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
 
-openssl/libra-challenger.a: openssl ra-challenger.o openssl-ra-challenger.o ias_sign_ca_cert.o
+openssl/libra-challenger.a: openssl ra.o ra-challenger.o openssl-ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-openssl/libnonsdk-ra-attester.a: openssl ra-challenger.o openssl-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+openssl/libnonsdk-ra-attester.a: openssl ra.o openssl-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 SGX_GIT=deps/linux-sgx
@@ -127,7 +135,7 @@ SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -Ideps/local/include \
   -I$(SGX_GIT)/common/inc
 
 MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
-	ra_tls_options.c \
+	ra_tls_options.c ra.c \
 	$(MBEDTLS_RA_ATTESTER_SRC) $(MBEDTLS_RA_CHALLENGER_SRC) \
 	$(NONSDK_RA_ATTESTER_SRC) ias-ra-openssl.c
 MBEDTLS_SSL_SERVER_LIBS=-l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
@@ -150,8 +158,11 @@ ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 endif
 
+ifdef ECDSA
+WOLFSSL_SSL_SERVER_LIBS+= -l:libQuoteVerification.so -ldl
+endif
 wolfssl-ssl-server-mutual: deps/wolfssl-examples/tls/server-tls.c ra_tls_options.c ssl-server.manifest deps/graphene/Runtime/pal_loader wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
-	$(CC) -o $@ $(CFLAGSERRORS) -DSGX_RATLS_MUTUAL $(SSL_SERVER_INCLUDES) $(filter %.c, $^) -Ldeps/local/lib $(SGX_DCAP_LIB) wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS) -l:libQuoteVerification.so -ldl
+	$(CC) -o $@ $(CFLAGSERRORS) -DSGX_RATLS_MUTUAL $(SSL_SERVER_INCLUDES) $(filter %.c, $^) -Ldeps/local/lib $(SGX_DCAP_LIB) wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -262,9 +273,14 @@ endif
 openssl-ra-challenger: tests/ra-challenger.c openssl/libra-challenger.a
 	$(CC) $(CFLAGS) -DOPENSSL $^ -o $@ -l:libcrypto.a -ldl
 
+WOLFSSL_RA_CHALLENGER_LIBS=-l:libwolfssl.a -lm
+ifdef ECDSA
+WOLFSSL_RA_CHALLENGER_LIBS+=-l:libQuoteVerification.so
 wolfssl-ra-challenger: deps/local/lib/libQuoteVerification.so
+endif
+
 wolfssl-ra-challenger: tests/ra-challenger.c wolfssl/libra-challenger.a
-	$(CC) $(CFLAGS) $(filter %.c %.a, $^) -o $@ -Ldeps/local/lib -l:libwolfssl.a -l:libQuoteVerification.so -ldl -lm
+	$(CC) $(CFLAGS) $(filter %.c %.a, $^) -o $@ -Ldeps/local/lib $(WOLFSSL_RA_CHALLENGER_LIBS)
 
 mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm

@@ -13,6 +13,7 @@
 #include <sgx_quote.h>
 
 #include "ra.h"
+#include "ra_private.h"
 
 #if SGX_SDK
 /* SGX SDK does not have this. */
@@ -21,21 +22,6 @@ void *memmem(const void *h0, size_t k, const void *n0, size_t l);
 
 #include "ra-challenger_private.h"
 #include "ra-challenger.h"
-
-#define OID(N) {0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF8, 0x4D, 0x8A, 0x39, (N)}
-
-const uint8_t ias_response_body_oid[]    = OID(0x02);
-const uint8_t ias_root_cert_oid[]        = OID(0x03);
-const uint8_t ias_leaf_cert_oid[]        = OID(0x04);
-const uint8_t ias_report_signature_oid[] = OID(0x05);
-
-const uint8_t quote_oid[]          = OID(0x06);
-const uint8_t pck_crt_oid[]        = OID(0x07);
-const uint8_t pck_sign_chain_oid[] = OID(0x08);
-const uint8_t tcb_info_oid[]       = OID(0x09);
-const uint8_t tcb_sign_chain_oid[] = OID(0x0a);
-
-const size_t ias_oid_len = sizeof(ias_response_body_oid);
 
 void get_quote_from_extension
 (
@@ -208,17 +194,20 @@ int is_epid_ratls_cert
     int rc;
     
     rc = find_oid(der_crt, der_crt_len,
-                  ias_response_body_oid, sizeof(ias_response_body_oid),
+                  ias_response_body_oid, ias_oid_len,
                   &ext_data, &ext_data_len);
     if (1 == rc) return 1;
 
     rc = find_oid(der_crt, der_crt_len,
-                   quote_oid, sizeof(quote_oid),
+                   quote_oid, ias_oid_len,
                    &ext_data, &ext_data_len);
     if (1 == rc) return 0;
 
     /* Something is fishy. Neither EPID nor ECDSA RA-TLC cert?! */
     assert(0);
+    // Avoid compiler error: control reaches end of non-void function
+    // [-Werror=return-type]
+    return -1;
 }
 
 /**
