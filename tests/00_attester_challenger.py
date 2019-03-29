@@ -22,7 +22,7 @@ class TestCase:
         assert self.socat_process.poll() == None
 
     def teardown(self):
-        check_call(split('rm -rf /tmp/openssl.crt /tmp/wolfssl.crt /tmp/mbedtls.crt'))
+        check_call(split('rm -rf /tmp/openssl-epid-crt.der /tmp/wolfssl-epid-crt.der /tmp/mbedtls-epid-crt.der'))
         if self.socat_process:
             self.socat_process.terminate()
             self.socat_process = None
@@ -31,20 +31,17 @@ class TestCase:
         pass
 
     def main(self) :
-        with open('/tmp/openssl.crt', 'w') as f:
-            check_call(split("deps/graphene/Runtime/pal-Linux-SGX openssl-ra-attester"),
-                       stdout=f)
-        with open('/tmp/wolfssl.crt', 'w') as f:
-            check_call(split("deps/graphene/Runtime/pal-Linux-SGX wolfssl-ra-attester"),
-                       stdout=f)
-        with open('/tmp/mbedtls.crt', 'w') as f:
-            check_call(split("deps/graphene/Runtime/pal-Linux-SGX mbedtls-ra-attester"),
-                       stdout=f)
+        check_call(split("deps/graphene/Runtime/pal-Linux-SGX openssl-ra-attester epid"))
+        check_call(split("mv epid-crt.der /tmp/openssl-epid-crt.der"))
+        check_call(split("deps/graphene/Runtime/pal-Linux-SGX wolfssl-ra-attester epid"))
+        check_call(split("mv epid-crt.der /tmp/wolfssl-epid-crt.der"))
+        check_call(split("deps/graphene/Runtime/pal-Linux-SGX mbedtls-ra-attester epid"))
+        check_call(split("mv epid-crt.der /tmp/mbedtls-epid-crt.der"))
 
         for lib in ['mbedtls', 'wolfssl', 'openssl']:
-            check_call(split('./openssl-ra-challenger /tmp/%s.crt' % (lib) ))
-            check_call(split('./wolfssl-ra-challenger /tmp/%s.crt' % (lib) ))
-            check_call(split('./mbedtls-ra-challenger /tmp/%s.crt' % (lib) ))
+            check_call(split('./openssl-ra-challenger /tmp/%s-epid-crt.der' % (lib) ))
+            check_call(split('./wolfssl-ra-challenger /tmp/%s-epid-crt.der' % (lib) ))
+            check_call(split('./mbedtls-ra-challenger /tmp/%s-epid-crt.der' % (lib) ))
 
 if __name__ == '__main__':
     tc = TestCase()
