@@ -1,5 +1,5 @@
 diff --git a/SGX_Linux/sgx_t.mk b/SGX_Linux/sgx_t.mk
-index b4dd62c..3802e25 100644
+index b4dd62c..9055109 100644
 --- a/SGX_Linux/sgx_t.mk
 +++ b/SGX_Linux/sgx_t.mk
 @@ -39,16 +39,18 @@ endif
@@ -24,7 +24,7 @@ index b4dd62c..3802e25 100644
  
  ifeq ($(HAVE_WOLFSSL_TEST), 1)
  	Wolfssl_Include_Paths += -I$(WOLFSSL_ROOT)/wolfcrypt/test/
-@@ -62,10 +64,11 @@ endif
+@@ -62,13 +64,14 @@ endif
  
  
  Flags_Just_For_C := -Wno-implicit-function-declaration -std=c11
@@ -36,7 +36,11 @@ index b4dd62c..3802e25 100644
 +  -L$(SGX_RA_TLS_LIB) -lsgx_ra_tls_wolfssl \
  	-L$(SGX_WOLFSSL_LIB) -lwolfssl.sgx.static.lib \
  	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
- 	-Wl,--start-group -lsgx_tstdc -lsgx_tstdcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+-	-Wl,--start-group -lsgx_tstdc -lsgx_tstdcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
++	-Wl,--start-group -lsgx_tstdc -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+ 	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
+ 	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
+ 	-Wl,--defsym,__ImageBase=0 \
 @@ -112,7 +115,7 @@ endif
  ######## Wolfssl_Enclave Objects ########
  
@@ -47,7 +51,7 @@ index b4dd62c..3802e25 100644
  
  trusted/Wolfssl_Enclave_t.o: ./trusted/Wolfssl_Enclave_t.c
 diff --git a/SGX_Linux/sgx_u.mk b/SGX_Linux/sgx_u.mk
-index 4d157cd..d538825 100644
+index 4d157cd..14c1959 100644
 --- a/SGX_Linux/sgx_u.mk
 +++ b/SGX_Linux/sgx_u.mk
 @@ -30,6 +30,8 @@ else
