@@ -17,6 +17,11 @@ RUN apt-get install -y --no-install-recommends python gawk python-protobuf pytho
 
 RUN apt-get install -y --no-install-recommends linux-headers-$KERNEL_VERSION
 
+# SCONE requirements
+RUN apt-get install -y --no-install-recommends libprotoc-dev pkgconf protobuf-compiler # to compile libprotobuf-c
+# SGX-LKL
+RUN apt-get install -y --no-install-recommends curl sudo make gcc bc python xutils-dev iproute2 iptables
+
 RUN wget https://download.01.org/intel-sgx/dcap-1.0.1/dcap_installer/ubuntuServer1604/libsgx-dcap-ql-dbg_1.0.101.48192-xenial1_amd64.deb \
     https://download.01.org/intel-sgx/dcap-1.0.1/dcap_installer/ubuntuServer1604/libsgx-dcap-ql-dev_1.0.101.48192-xenial1_amd64.deb \
     https://download.01.org/intel-sgx/dcap-1.0.1/dcap_installer/ubuntuServer1604/libsgx-dcap-ql_1.0.101.48192-xenial1_amd64.deb \
