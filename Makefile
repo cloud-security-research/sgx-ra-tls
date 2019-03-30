@@ -110,7 +110,7 @@ openssl/libnonsdk-ra-attester.a: openssl ra.o openssl-ra-attester.o ias-ra-opens
 	$(AR) rcs $@ $(filter %.o, $^)
 
 SGX_GIT=deps/linux-sgx
-EPID_SDK=$(SGX_GIT)/external/epid-sdk-3.0.0
+EPID_SDK=$(SGX_GIT)/external/epid-sdk
 
 CFLAGS+=-I$(SGX_GIT)/common/inc/internal -I$(EPID_SDK) -I$(SGX_GIT)/common/inc
 
@@ -131,7 +131,7 @@ messages.pb-c.c:
 
 SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -Ideps/local/include \
 	-Ideps/linux-sgx/common/inc/internal \
-  -Ideps/linux-sgx/external/epid-sdk-3.0.0 \
+  -Ideps/linux-sgx/external/epid-sdk \
   -I$(SGX_GIT)/common/inc
 
 MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
@@ -183,13 +183,13 @@ README.html : README.md
 
 SCONE_SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -ISCONE/deps/local/include \
 	-Ideps/linux-sgx/common/inc/internal \
-  -Ideps/linux-sgx/external/epid-sdk-3.0.0 \
+  -Ideps/linux-sgx/external/epid-sdk \
   -I$(SGX_GIT)/common/inc
 
 SGXLKL_SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include \
   -Isgxlkl/local/include \
 	-Ideps/linux-sgx/common/inc/internal \
-  -Ideps/linux-sgx/external/epid-sdk-3.0.0 \
+  -Ideps/linux-sgx/external/epid-sdk \
   -I$(SGX_GIT)/common/inc
 
 clients: mbedtls-client wolfssl-client openssl-client
@@ -275,7 +275,7 @@ openssl-ra-challenger: tests/ra-challenger.c openssl/libra-challenger.a
 
 WOLFSSL_RA_CHALLENGER_LIBS=-l:libwolfssl.a -lm
 ifdef ECDSA
-WOLFSSL_RA_CHALLENGER_LIBS+=-l:libQuoteVerification.so
+WOLFSSL_RA_CHALLENGER_LIBS+=-l:libQuoteVerification.so -ldl
 wolfssl-ra-challenger: deps/local/lib/libQuoteVerification.so
 endif
 
@@ -385,9 +385,10 @@ deps/local/lib/libprotobuf-c.a: deps/protobuf-c/configure
 	cp deps/protobuf-c/protobuf-c/.libs/libprotobuf-c.a deps/local/lib
 	cp deps/protobuf-c/protobuf-c/protobuf-c.h deps/local/include/protobuf-c
 
+SGX_SDK_COMMIT=sgx_2.4
 deps/linux-sgx:
 	cd deps && git clone https://github.com/01org/linux-sgx.git
-	cd $@ && git checkout sgx_2.0
+	cd $@ && git checkout $(SGX_SDK_COMMIT)
 
 deps/SGXDataCenterAttestationPrimitives:
 ifdef ECDSA
@@ -397,10 +398,12 @@ else
 	mkdir -p $@
 endif
 
+# This matches https://download.01.org/intel-sgx/linux-2.4/ubuntu16.04-server/
+SGX_DRIVER_COMMIT=778dd1f711359cdabe4e1ca8d6cc5e5459474770
 deps/linux-sgx-driver: deps/SGXDataCenterAttestationPrimitives
 ifndef ECDSA
 	cd deps && git clone https://github.com/01org/linux-sgx-driver.git
-	cd $@ && git checkout sgx_driver_2.0
+	cd $@ && git checkout $(SGX_DRIVER_COMMIT)
 else
 	cp -a $(SGX_DCAP)/driver/linux deps/linux-sgx-driver
 endif
@@ -438,11 +441,7 @@ endif
 deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
 # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
 # Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
-ifndef ECDSA
-	cd deps/graphene && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.0\n" | $(MAKE) -j1 SGX=1
-else
 	cd deps/graphene && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.4\n" | $(MAKE) -j1 SGX=1
-endif
 
 # I prefer to have all dynamic libraries in one directory. This
 # reduces the effort in the Graphene-SGX manifest file.
@@ -454,12 +453,12 @@ endif
 
 KERNEL_VERSION=$(shell uname -r)
 
-Dockerfile-ecdsa: Dockerfile-ecdsa.template
-	sed 's/\$$KERNEL_VERSION/$(KERNEL_VERSION)/' Dockerfile-ecdsa.template > Dockerfile-ecdsa
+Dockerfile: Dockerfile.template
+	sed 's/\$$KERNEL_VERSION/$(KERNEL_VERSION)/' $^ > $@
 
-.PHONY=docker-image-ecdsa
-docker-image-ecdsa: Dockerfile-ecdsa
-	docker build -t ratls-ecdsa -f Dockerfile-ecdsa .
+.PHONY=docker-image
+docker-image: Dockerfile
+	docker build -t ratls -f $^ .
 
 .PHONY=tests
 tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester

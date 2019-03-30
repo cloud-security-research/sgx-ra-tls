@@ -22,7 +22,7 @@ SRC=../wolfssl-ra-attester.c \
 INCLUDES=-I.. -Ilocal/include -I/opt/intel/sgxsdk/include \
   -I../deps/linux-sgx/common/inc \
 	-I../deps/linux-sgx/common/inc/internal \
-  -I../deps/linux-sgx/external/epid-sdk-3.0.0
+  -I../deps/linux-sgx/external/epid-sdk
 
 ### Dependencies
 
