@@ -138,8 +138,8 @@ int main(int argc, char **argv)
 
     fcntl(0, F_SETFL, O_NONBLOCK);
     ssize_t sz = read(0, request, sizeof(request));
-    assert(sz < (ssize_t) sizeof(request));
-    request[sz] = '\0';
+    /* Do not check for errors, since there may well be no input. */
+    assert(sz < (ssize_t) sizeof(request)); /* Input too large. */
     
     if (BIO_puts(bio, request) <= 0) {
         BIO_free_all(bio);
