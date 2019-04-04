@@ -1,0 +1,8 @@
+image: ratls:2.0
+
+test:
+  only:
+    - web
+  script:
+    - ./build.sh sgxsdk
+    - python tests/regression.py tests/00_sgxsdk_server_client.py
