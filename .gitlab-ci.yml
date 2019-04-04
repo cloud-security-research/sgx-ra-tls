@@ -3,6 +3,13 @@ image: ratls:2.0
 test:
   only:
     - web
+    - schedules
   script:
     - ./build.sh sgxsdk
+    - ./build.sh graphene
+    - ./build.sh sgxlkl
+    - make tests
     - python tests/regression.py tests/00_sgxsdk_server_client.py
+    - python tests/regression.py tests/00_graphene_server_client.py
+    - python tests/regression.py tests/00_sgxlkl_server_client.py
+    - python tests/regression.py tests/00_attester_challenger.py
