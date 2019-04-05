@@ -1,6 +1,5 @@
-image: ratls:2.0
-
-test:
+test-epid:
+  image: ratls:2.4
   only:
     - web
     - schedules
@@ -13,3 +12,18 @@ test:
     - python tests/regression.py tests/00_graphene_server_client.py
     - python tests/regression.py tests/00_sgxlkl_server_client.py
     - python tests/regression.py tests/00_attester_challenger.py
+
+test-ecdsa:
+  tags:
+    - sgx
+    - sgx-ecdsa
+  image: ratls:2.4
+  only:
+    - web
+    - schedules
+  script:
+    - ECDSA=1 ./build.sh graphene
+    - ECDSA=1 make wolfssl-ra-attester
+    - ECDSA=1 make wolfssl-ra-challenger
+    - make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample
+    - python tests/regression.py tests/00_ecdsa_attester_challenger.py
