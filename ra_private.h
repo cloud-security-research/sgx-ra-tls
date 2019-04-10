@@ -22,6 +22,9 @@ extern const uint8_t pck_crt_oid[];
 extern const uint8_t pck_sign_chain_oid[];
 extern const uint8_t tcb_info_oid[];
 extern const uint8_t tcb_sign_chain_oid[];
+extern const uint8_t qe_identity_oid[];
+extern const uint8_t root_ca_crl_oid[];
+extern const uint8_t pck_crl_oid[];
 
 extern const size_t ias_oid_len;
 

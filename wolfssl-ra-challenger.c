@@ -309,10 +309,59 @@ int ecdsa_verify_sgx_cert_extensions
     ecdsa_extract_x509_extensions(crt.extensions,
                                   crt.extensionsSz,
                                   &evidence);
-
     FreeDecodedCert(&crt);
+
+    /* pem_cert_chain := pck cert + pck CA cert + root CA cert */
+    /* crls := root ca crl + pck crl */
+    /* pem_trusted_root_ca_cert */
+    size_t pck_cert_chain_len = evidence.pck_sign_chain_len + evidence.pck_crt_len + 1;
+    char pck_cert_chain[pck_cert_chain_len];
+    memcpy(pck_cert_chain, evidence.pck_crt, evidence.pck_crt_len);
+    memcpy(pck_cert_chain + evidence.pck_crt_len, evidence.pck_sign_chain, evidence.pck_sign_chain_len);
+    pck_cert_chain[sizeof(pck_cert_chain) - 1] = '\0';
+
+    assert(evidence.root_ca_crl_len < sizeof(evidence.root_ca_crl));
+    evidence.root_ca_crl[evidence.root_ca_crl_len] = '\0';
+    assert(evidence.pck_crl_len < sizeof(evidence.pck_crl));
+    evidence.pck_crl[evidence.pck_crl_len] = '\0';
     
-    return 1;
+    const char* const crls[] = {(char*) evidence.root_ca_crl,
+                                (char*) evidence.pck_crl};
+
+    /* SGXDataCenterAttestationPrimitives/QuoteVerification/Src/ThirdParty/CMakeLists.txt depends on openssl-1.1.0i.tar.gz" */
+    /* libQuoteVerification.so seems to link in OpenSSL dependencies statically?! */
+
+    /* QVL expects zero terminated strings as input! */
+    
+    int pck_crt_status = sgxAttestationVerifyPCKCertificate(pck_cert_chain, crls,
+                                                            (char*) ecdsa_sample_data_real_trustedRootCaCert_pem);
+
+    assert(evidence.tcb_info_len < sizeof(evidence.tcb_info));
+    evidence.tcb_info[evidence.tcb_info_len] = '\0';
+    assert(evidence.tcb_sign_chain_len < sizeof(evidence.tcb_sign_chain));
+    evidence.tcb_sign_chain[evidence.tcb_sign_chain_len] = '\0';
+    int tcb_info_status = sgxAttestationVerifyTCBInfo((char*) evidence.tcb_info,
+                                                      (char*) evidence.tcb_sign_chain,
+                                                      (char*) evidence.root_ca_crl,
+                                                      (char*) ecdsa_sample_data_real_trustedRootCaCert_pem);
+
+    assert(evidence.qe_identity_len < sizeof(evidence.qe_identity));
+    evidence.qe_identity[evidence.qe_identity_len] = '\0';
+    
+    int qe_identity_status = sgxAttestationVerifyQEIdentity((char*) evidence.qe_identity,
+                                                            (char*) evidence.tcb_sign_chain,
+                                                            (char*) evidence.root_ca_crl,
+                                                            (char*) ecdsa_sample_data_real_trustedRootCaCert_pem);
+                                                            
+    int quote_status = sgxAttestationVerifyQuote(evidence.quote, evidence.quote_len,
+                                                 (char*) evidence.pck_crt,
+                                                 (char*) evidence.pck_crl,
+                                                 (char*) evidence.tcb_info,
+                                                 (char*) evidence.qe_identity);
+
+    int report_user_data_status = verify_report_data_against_server_cert(&crt, (sgx_quote_t*) evidence.quote);
+    
+    return pck_crt_status || tcb_info_status || qe_identity_status || quote_status || report_user_data_status;
 }
 #endif
 

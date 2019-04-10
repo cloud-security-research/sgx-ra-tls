@@ -30,6 +30,7 @@
 #ifdef RATLS_ECDSA
 #include "ecdsa-ra-attester.h"
 #include "ecdsa-sample-data/real/sample_data.h"
+#include "ecdsa-attestation-collateral.h"
 #endif
 #include "ra_private.h"
 
@@ -127,6 +128,18 @@ void ecdsa_generate_x509
            evidence->tcb_sign_chain_len);
     crt.tcbSignChainSz = evidence->tcb_sign_chain_len;
 
+    memcpy(crt.qeIdentity, evidence->qe_identity,
+           evidence->qe_identity_len);
+    crt.qeIdentitySz = evidence->qe_identity_len;
+
+    memcpy(crt.rootCaCrl, evidence->root_ca_crl,
+           evidence->root_ca_crl_len);
+    crt.rootCaCrlSz = evidence->root_ca_crl_len;
+
+    memcpy(crt.pckCrl, evidence->pck_crl,
+           evidence->pck_crl_len);
+    crt.pckCrlSz = evidence->pck_crl_len;
+    
     RNG    rng;
     wc_InitRng(&rng);
     
@@ -545,6 +558,13 @@ void collect_attestation_evidence
     ecdsa_get_quote(report_data, evidence->quote, &evidence->quote_len);
     /* 2. Get TCB Info. */
     ecdsa_get_tcb_info(evidence, opts);
+
+    memcpy(evidence->qe_identity, qe_identity_json, qe_identity_json_len);
+    evidence->qe_identity_len = qe_identity_json_len;
+    memcpy(evidence->root_ca_crl, root_ca_crl_pem, root_ca_crl_pem_len);
+    evidence->root_ca_crl_len = root_ca_crl_pem_len;
+    memcpy(evidence->pck_crl, pck_crl_pem, pck_crl_pem_len);
+    evidence->pck_crl_len = pck_crl_pem_len;
 }
 
 static void

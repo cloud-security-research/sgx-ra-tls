@@ -86,7 +86,7 @@ ias-ra-%.c: ias-ra.c
 
 ias-ra-wolfssl.o: CFLAGS += -DUSE_WOLFSSL
 
-wolfssl-ra-attester.o: ecdsa-sample-data/real/sample_data.h
+wolfssl-ra-attester.o: ecdsa-sample-data/real/sample_data.h ecdsa-attestation-collateral.h
 wolfssl-ra-challenger.o: ecdsa-sample-data/real/sample_data.h
 
 wolfssl/libra-attester.a: wolfssl wolfssl-ra-attester.o wolfssl-ra.o ias-ra-wolfssl.o
@@ -95,7 +95,7 @@ wolfssl/libra-attester.a: wolfssl wolfssl-ra-attester.o wolfssl-ra.o ias-ra-wolf
 ecdsa-ra-attester.o: ecdsa-aesmd-messages.pb-c.c
 
 ifdef ECDSA
-wolfssl/libnonsdk-ra-attester.a: ecdsa-aesmd-messages.pb-c.o ecdsa-ra-attester.o ecdsa-sample-data/real/sample_data.o
+wolfssl/libnonsdk-ra-attester.a: ecdsa-aesmd-messages.pb-c.o ecdsa-ra-attester.o ecdsa-sample-data/real/sample_data.o ecdsa-attestation-collateral.o
 endif
 wolfssl/libnonsdk-ra-attester.a: wolfssl ra.o wolfssl-ra.o wolfssl-ra-attester.o ias-ra-wolfssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 		$(AR) rcs $@ $(filter %.o, $^)
@@ -238,6 +238,8 @@ clean:
 	$(RM) ias-ra-openssl.c ias-ra-wolfssl.c
 	$(RM) *.o
 	$(RM) $(LIBS)
+	$(RM) ecdsa-sample-data/real/sample_data.h
+	$(RM) ecdsa-attestation-collateral.c ecdsa-attestation-collateral.h
 
 mrproper: clean
 	$(MAKE) -f ratls-wolfssl.mk mrproper
@@ -450,6 +452,17 @@ deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
+
+ecdsa-attestation-collateral.c:
+	curl -o qe-identity.json "https://api.trustedservices.intel.com/sgx/certification/v1/qe/identity"
+	curl -o root-ca-crl.pem "https://certificates.trustedservices.intel.com/IntelSGXRootCA.crl"
+	curl -o pck-crl.pem "https://api.trustedservices.intel.com/sgx/certification/v1/pckcrl?ca=processor"
+	xxd -i qe-identity.json > $@
+	xxd -i root-ca-crl.pem >> $@
+	xxd -i pck-crl.pem >> $@
+
+ecdsa-attestation-collateral.h: ecdsa-attestation-collateral.c
+	cat $^ | sed 's/ = .*;/;/' | sed '/^  /d' | sed 's/ = {/;/' | sed '/^};$$/d' | sed 's/^/extern /' > $@
 
 KERNEL_VERSION=$(shell uname -r)
 

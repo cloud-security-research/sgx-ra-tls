@@ -177,6 +177,18 @@ void ecdsa_extract_x509_extensions
     extract_x509_extension(ext, ext_len, tcb_sign_chain_oid, ias_oid_len,
                            evidence->tcb_sign_chain, &evidence->tcb_sign_chain_len,
                            sizeof(evidence->tcb_sign_chain));
+
+    extract_x509_extension(ext, ext_len, qe_identity_oid, ias_oid_len,
+                           evidence->qe_identity, &evidence->qe_identity_len,
+                           sizeof(evidence->qe_identity));
+
+    extract_x509_extension(ext, ext_len, root_ca_crl_oid, ias_oid_len,
+                           evidence->root_ca_crl, &evidence->root_ca_crl_len,
+                           sizeof(evidence->root_ca_crl));
+
+    extract_x509_extension(ext, ext_len, pck_crl_oid, ias_oid_len,
+                           evidence->pck_crl, &evidence->pck_crl_len,
+                           sizeof(evidence->pck_crl));
 }
 
 /**
