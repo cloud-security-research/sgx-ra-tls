@@ -80,22 +80,19 @@ int verify_report_data_against_server_cert
        should start using the buffer. */
     int pk_der_size_byte = mbedtls_pk_write_pubkey_der(&crt->pk, pk_der, pk_der_size_max);
     
-    // Can only handle 2048 bit RSA keys for now. Other key sizes will
-    // have a different pk_der_offset.
-    assert(pk_der_size_byte == 294);
+    // Assume 3072 bit RSA keys for now.
+    assert(pk_der_size_byte == rsa_pub_3072_pcks_der_len);
     
     /* Move the data to the beginning of the buffer, to avoid pointer
        arithmetic from this point forward. */
     memmove(pk_der, pk_der + pk_der_size_max - pk_der_size_byte, pk_der_size_byte);
 
-    /* 24 since we skip the DER structure header. */
-    static const uint64_t pk_der_offset = 24;
-
     static const size_t SHA256_DIGEST_SIZE = 32;
     uint8_t shaSum[SHA256_DIGEST_SIZE];
 
     memset(shaSum, 0, SHA256_DIGEST_SIZE);
-    mbedtls_sha256(pk_der + pk_der_offset, pk_der_size_byte - pk_der_offset,
+    mbedtls_sha256(pk_der + rsa_pub_3072_pcks_header_len,
+                   pk_der_size_byte - rsa_pub_3072_pcks_header_len,
                    shaSum, 0 /* is224 */);
 
 #if 0

@@ -100,8 +100,7 @@ void sha256_rsa_pubkey
 {
     int len = i2d_RSAPublicKey(key, NULL);
     assert(len > 0);
-    /* magic size of DER-encoded 2048 bit RSA public key. */
-    assert(len == 270);
+    assert(len == rsa_pub_3072_raw_der_len);
     
     unsigned char buf[len];
     unsigned char* p = buf;
@@ -133,7 +132,7 @@ openssl_create_key_and_x509
     /* Generate key. */
     RSA* key;
 
-    static const int nr_bits = 2048;
+    static const int nr_bits = 3072;
     key = RSA_generate_key(nr_bits, RSA_F4, NULL, NULL);
     assert(NULL != key);
     

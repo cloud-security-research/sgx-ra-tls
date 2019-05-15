@@ -169,7 +169,7 @@ wolfssl_create_key_and_x509
 
     wc_InitRng(&rng);
     wc_InitRsaKey(&genKey, 0);
-    ret = wc_MakeRsaKey(&genKey, 2048, 65537, &rng);
+    ret = wc_MakeRsaKey(&genKey, 3072, 65537, &rng);
     assert(ret == 0);
 
     uint8_t der[4096];

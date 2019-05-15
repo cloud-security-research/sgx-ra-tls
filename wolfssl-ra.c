@@ -4,6 +4,7 @@
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/asn_public.h>
 #include <wolfssl/wolfcrypt/rsa.h>
+#include "ra.h"
 #include "wolfssl-ra.h"
 
 void sha256_rsa_pubkey
@@ -12,14 +13,14 @@ void sha256_rsa_pubkey
     RsaKey* key
 )
 {
-    // Expect a 2048 bit RSA key.
-    assert(key->n.used == 32);
+    // Expect a 3072 bit RSA key.
+    assert(key->n.used == 48 /* == 3072 / 8 / 8 */);
 
     uint8_t buf[1024];
     /* SetRsaPublicKey() only exports n and e without wrapping them in
        additional ASN.1 (PKCS#1). */
     int pub_rsa_key_der_len = SetRsaPublicKey(buf, key, sizeof(buf), 0);
-    assert(pub_rsa_key_der_len == 270);
+    assert(pub_rsa_key_der_len == rsa_pub_3072_raw_der_len);
     
     Sha256 sha;
     wc_InitSha256(&sha);

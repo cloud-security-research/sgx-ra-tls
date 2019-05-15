@@ -37,19 +37,18 @@ void sha256_rsa_pubkey(unsigned char hash[SHA256_DIGEST_SIZE],
        should start using the buffer. */
     int pk_der_size_byte = mbedtls_pk_write_pubkey_der((mbedtls_pk_context*) pk,
                                                        pk_der, pk_der_size_max);
-    // Can only handle 2048 bit RSA keys for now. Other key sizes will
-    // have a different pk_der_offset.
-    assert(pk_der_size_byte == 294);
+    // Assume 3072 bit RSA keys for now.
+    assert(pk_der_size_byte == rsa_pub_3072_pcks_der_len);
 
     /* Move the data to the beginning of the buffer, to avoid pointer
        arithmetic from this point forward. */
     memmove(pk_der, pk_der + pk_der_size_max - pk_der_size_byte, pk_der_size_byte);
 
-    /* 24 since we skip the DER structure header (i.e, PKCS#1 header). */
-    static const uint64_t pk_der_offset = 24;
-
+    /* Exclude PCKS#1 header (rsa_pub_3072_pcks_header_len) from
+       checksum. */
     memset(hash, 0, SHA256_DIGEST_SIZE);
-    mbedtls_sha256(pk_der + pk_der_offset, pk_der_size_byte - pk_der_offset,
+    mbedtls_sha256(pk_der + rsa_pub_3072_pcks_header_len,
+                   pk_der_size_byte - rsa_pub_3072_pcks_header_len,
                    hash, 0 /* is224 */);
 }
 
@@ -197,7 +196,7 @@ void __mbedtls_create_key_and_x509
                      MBEDTLS_RSA_PKCS_V15, 0);
 
     ret = mbedtls_rsa_gen_key((mbedtls_rsa_context*)key->pk_ctx,
-                              mbedtls_ctr_drbg_random, &ctr_drbg, 2048, 65537);
+                              mbedtls_ctr_drbg_random, &ctr_drbg, 3072, 65537);
     assert(ret == 0);
 
     create_x509(key, &writecrt, opts);
