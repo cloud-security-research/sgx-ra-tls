@@ -9,7 +9,7 @@ SGX_DCAP_URI=https://github.com/thomasknauth/SGXDataCenterAttestationPrimitives.
 SGX_DCAP_COMMIT=962632364bcfc827bf6473b814338e4865a709cf
 SGX_DCAP?=deps/SGXDataCenterAttestationPrimitives/
 
-SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc
+SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc -I$(SGX_DCAP)/QuoteVerification/Src/AttestationLibrary/include
 
 CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include $(SGX_DCAP_INC) -fPIC
 CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
@@ -215,9 +215,9 @@ mbedtls/ldpreload.so: ldpreload.c
 # xxd produces a header file. When included in multiple .c files it
 # leads to "multiple definition errors". Produce a .h and .c file
 # to avoid this.
-ecdsa-sample-data/real/sample_data.c: ecdsa-sample-data/real/*.pem ecdsa-sample-data/real/*.dat
+ecdsa-sample-data/real/sample_data.c: ecdsa-sample-data/real/*.pem
 	$(RM) $@
-	for f in ecdsa-sample-data/real/*.pem ecdsa-sample-data/real/*.dat ; do \
+	for f in ecdsa-sample-data/real/*.pem ; do \
 		xxd -i $$f >> $@ ; \
 	done
 

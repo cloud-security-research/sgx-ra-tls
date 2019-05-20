@@ -242,6 +242,7 @@ static void ecdsa_get_quote
     assert(ecdsa_sample_data_quote_ppid_rsa3072_dat_len <= *quote_len);
     memcpy(quote, ecdsa_sample_data_quote_ppid_rsa3072_dat, ecdsa_sample_data_quote_ppid_rsa3072_dat_len);
     *quote_len = ecdsa_sample_data_quote_ppid_rsa3072_dat_len;
+#endif
 }
 
 /* static void print_byte_array(FILE* f, uint8_t* data, int size) { */

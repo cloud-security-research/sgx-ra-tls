@@ -8,6 +8,7 @@
 
 #include "ra-attester.h"
 
+extern struct ecdsa_ra_tls_options my_ecdsa_ra_tls_options;
 extern struct ra_tls_options my_ra_tls_options;
 
 static void dump_key(const unsigned char* der_key,
@@ -29,10 +30,6 @@ int main(int argc, char* argv[]) {
     int32_t der_key_len = sizeof(der_key);
     int32_t der_crt_len = sizeof(der_crt);
     
-    create_key_and_x509(der_key, &der_key_len,
-                        der_crt, &der_crt_len,
-                        &my_ra_tls_options);
-
     if (0 == strcmp(argv[1], "epid")) {
         create_key_and_x509(der_key, &der_key_len,
                             der_crt, &der_crt_len,
