@@ -35,7 +35,7 @@ class TestCase:
         libs = ['wolfssl']
         for lib in libs:
             check_call(split("deps/graphene/Runtime/pal-Linux-SGX %s-ra-attester ecdsa" % (lib)))
-            check_call(split("cp ecdsa-crt.der /tmp/%s.crt" % (lib)))
+            check_call(split("cp crt.der /tmp/%s.crt" % (lib)))
 
             # check_call(split('./openssl-ra-challenger /tmp/%s.crt' % (lib)))
             check_call('LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger /tmp/%s.crt ecdsa' % (lib), shell=True)

@@ -11,13 +11,14 @@
 extern struct ecdsa_ra_tls_options my_ecdsa_ra_tls_options;
 extern struct ra_tls_options my_ra_tls_options;
 
-static void dump_key(const unsigned char* der_key,
-                     int32_t der_key_len)
+static void write_buffer(const unsigned char* buf,
+                         int32_t len,
+                         const char* filename)
 {
-    int fd = open("key.der", O_CREAT | O_WRONLY, S_IRWXU);
+    int fd = open(filename, O_CREAT | O_WRONLY, S_IRWXU);
     assert(fd > 0);
-    ssize_t written = write(fd, der_key, der_key_len);
-    assert(written == der_key_len);
+    ssize_t written = write(fd, buf, len);
+    assert(written == len);
     close(fd);
 }
 
@@ -47,7 +48,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (argc > 1 && (0 == strcmp(argv[1], "--dump-key"))) {
-        dump_key(der_key, der_key_len);
-    }
+    write_buffer(der_crt, der_crt_len, "crt.der");
+    write_buffer(der_key, der_key_len, "key.der");
 }

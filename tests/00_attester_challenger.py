@@ -32,11 +32,11 @@ class TestCase:
 
     def main(self) :
         check_call(split("deps/graphene/Runtime/pal-Linux-SGX openssl-ra-attester epid"))
-        check_call(split("mv epid-crt.der /tmp/openssl-epid-crt.der"))
+        check_call(split("mv crt.der /tmp/openssl-epid-crt.der"))
         check_call(split("deps/graphene/Runtime/pal-Linux-SGX wolfssl-ra-attester epid"))
-        check_call(split("mv epid-crt.der /tmp/wolfssl-epid-crt.der"))
+        check_call(split("mv crt.der /tmp/wolfssl-epid-crt.der"))
         check_call(split("deps/graphene/Runtime/pal-Linux-SGX mbedtls-ra-attester epid"))
-        check_call(split("mv epid-crt.der /tmp/mbedtls-epid-crt.der"))
+        check_call(split("mv crt.der /tmp/mbedtls-epid-crt.der"))
 
         for lib in ['mbedtls', 'wolfssl', 'openssl']:
             check_call(split('./openssl-ra-challenger /tmp/%s-epid-crt.der' % (lib) ))
