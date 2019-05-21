@@ -35,7 +35,8 @@ endif
 
 Library_Name := sgx_ra_tls_wolfssl
 
-Wolfssl_C_Extra_Flags := -DSGX_SDK -DWOLFSSL_SGX -DWOLFSSL_SGX_ATTESTATION -DUSER_TIME -DWOLFSSL_CERT_EXT
+# -DFP_MAX_BITS=8192 required for RSA keys > 2048 bits to work
+Wolfssl_C_Extra_Flags := -DSGX_SDK -DWOLFSSL_SGX -DWOLFSSL_SGX_ATTESTATION -DUSER_TIME -DWOLFSSL_CERT_EXT -DFP_MAX_BITS=8192
 
 Wolfssl_C_Files := $(PROJECT_ROOT)/wolfssl-ra-attester.c \
 	$(PROJECT_ROOT)/wolfssl-ra-challenger.c \
