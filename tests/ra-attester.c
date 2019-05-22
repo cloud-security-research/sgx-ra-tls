@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
     (void) argv;
     
     uint8_t der_key[2048];
-    uint8_t der_crt[2*4096];
+    uint8_t der_crt[4*4096];
     int32_t der_key_len = sizeof(der_key);
     int32_t der_crt_len = sizeof(der_crt);
     

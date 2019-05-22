@@ -476,4 +476,7 @@ docker-image: Dockerfile
 	docker build -t ratls -f $^ .
 
 .PHONY=tests
-tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester
+ifndef ECDSA
+tests: openssl-ra-attester mbedtls-ra-attester
+endif
+tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger wolfssl-ra-attester
