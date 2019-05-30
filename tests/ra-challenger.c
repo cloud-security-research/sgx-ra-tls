@@ -40,5 +40,5 @@ int main(int argc, char* argv[]) {
 
     dprintf_ratls_cert(STDOUT_FILENO, der_crt, der_crt_len);
     
-    return 0;
+    return rc;
 }
