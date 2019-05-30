@@ -48,7 +48,9 @@ if [[ ! -d mbedtls ]] ; then
     patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
     patch -p1 < ../../mbedtls-ssl-server.patch
     patch -p1 < ../../mbedtls-client.patch
-    cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$CC -DCMAKE_C_FLAGS="-fPIC -O2 -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
+    RELEASE_TYPE=Release
+    [[ "$DEBUG" == "1" ]] && RELEASE_TYPE=Debug
+    cmake -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$CC -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
     make -j`nproc` || exit 1
     cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
     popd
