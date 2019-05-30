@@ -39,7 +39,7 @@ index a6989c4..9036910 100644
          #ifdef WOLFSSL_ASYNC_CRYPT
              if (ret == WC_PENDING_E) {
 diff --git a/wolfcrypt/src/asn.c b/wolfcrypt/src/asn.c
-index e234253..c30ca44 100644
+index e234253..ba9df53 100644
 --- a/wolfcrypt/src/asn.c
 +++ b/wolfcrypt/src/asn.c
 @@ -19,6 +19,7 @@
@@ -84,9 +84,9 @@ index e234253..c30ca44 100644
 +    byte    pckSignChain[4096];
 +    byte    tcbInfo[2048];
 +    byte    tcbSignChain[4096];
-+    byte    qeIdentity[512];
-+    byte    rootCaCrl[512];
-+    byte    pckCrl[512];
++    byte    qeIdentity[1024];
++    byte    rootCaCrl[1024];
++    byte    pckCrl[1024];
 +#endif
  #ifdef WOLFSSL_CERT_REQ
      byte attrib[MAX_ATTRIB_SZ];        /* Cert req attributes encoded */
@@ -208,7 +208,7 @@ index e234253..c30ca44 100644
 +    idx = SetSequence(length + oid_enc_lenSz + ext_lenSz,
 +                      output);
 +
-+    if ((length + oid_enc_lenSz + ext_lenSz) > outSz)
++    if ((idx + length + oid_enc_lenSz + ext_lenSz) > outSz)
 +        return BUFFER_E;
 +
 +    /* put oid */
@@ -441,7 +441,7 @@ index 9c77120..3c922dd 100644
  
  #ifndef SESSION_TICKET_LEN
 diff --git a/wolfssl/wolfcrypt/asn_public.h b/wolfssl/wolfcrypt/asn_public.h
-index b730846..d5b026c 100644
+index b730846..9c8128c 100644
 --- a/wolfssl/wolfcrypt/asn_public.h
 +++ b/wolfssl/wolfcrypt/asn_public.h
 @@ -164,6 +164,32 @@ typedef struct Cert {
@@ -467,11 +467,11 @@ index b730846..d5b026c 100644
 +    int     tcbInfoSz;
 +    byte    tcbSignChain[4096];
 +    int     tcbSignChainSz;
-+    byte    qeIdentity[512];
++    byte    qeIdentity[1024];
 +    int     qeIdentitySz;
-+    byte    rootCaCrl[512];
++    byte    rootCaCrl[1024];
 +    int     rootCaCrlSz;
-+    byte    pckCrl[512];
++    byte    pckCrl[1024];
 +    int     pckCrlSz;
 +#endif
  #ifdef WOLFSSL_CERT_REQ
