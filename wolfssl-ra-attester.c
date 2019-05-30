@@ -261,6 +261,7 @@ struct buffer_and_size {
 static
 void parse_response_header_get_pck_cert
 (
+    CURL* curl,
     const char* headers,
     size_t headers_len,
     char* pck_cert_chain,
@@ -283,9 +284,13 @@ void parse_response_header_get_pck_cert
                            strlen("\r\n"));
     assert(header_end);
 
-    assert((size_t) (header_end - header_begin) <= *pck_cert_chain_len);
-    memcpy(pck_cert_chain, header_begin, header_end - header_begin);
-    *pck_cert_chain_len = header_end - header_begin;
+    int unescaped_len;
+    char* unescaped = curl_easy_unescape(curl, header_begin, header_end - header_begin, &unescaped_len);
+    assert(unescaped);
+    assert(unescaped_len <= (int) *pck_cert_chain_len);
+    memcpy(pck_cert_chain, unescaped, unescaped_len);
+    *pck_cert_chain_len = unescaped_len;
+    curl_free(unescaped);
 }
 
 static
@@ -334,7 +339,7 @@ void get_pck_cert
         }
 
         evidence->pck_sign_chain_len = sizeof(evidence->pck_sign_chain);
-        parse_response_header_get_pck_cert(header.data, header.len,
+        parse_response_header_get_pck_cert(curl, header.data, header.len,
                                            (char*) evidence->pck_sign_chain,
                                            &evidence->pck_sign_chain_len);
 
@@ -360,6 +365,7 @@ void get_pck_cert
 static
 void parse_response_header_tcb_info_cert_chain
 (
+    CURL* curl,
     const char* headers,
     size_t headers_len,
     char* cert_chain,
@@ -379,9 +385,12 @@ void parse_response_header_tcb_info_cert_chain
                            strlen("\r\n"));
     assert(header_end);
 
-    assert((size_t) (header_end - header_begin) <= *cert_chain_len);
-    memcpy(cert_chain, header_begin, header_end - header_begin);
-    *cert_chain_len = header_end - header_begin;
+    int unescaped_len;
+    char* unescaped = curl_easy_unescape(curl, header_begin, header_end - header_begin, &unescaped_len);
+    assert(unescaped);
+    assert((int) *cert_chain_len >= unescaped_len);
+    memcpy(cert_chain, unescaped, unescaped_len);
+    *cert_chain_len = unescaped_len;
 }
 
 static void curl_get_tcb_info
@@ -421,7 +430,7 @@ static void curl_get_tcb_info
         assert(res == CURLE_OK);
 
         evidence->tcb_sign_chain_len = sizeof(evidence->tcb_sign_chain);
-        parse_response_header_tcb_info_cert_chain(header.data, header.len,
+        parse_response_header_tcb_info_cert_chain(curl, header.data, header.len,
                                                   (char*) evidence->tcb_sign_chain,
                                                   &evidence->tcb_sign_chain_len);
 
