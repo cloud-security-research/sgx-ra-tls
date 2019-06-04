@@ -29,8 +29,6 @@ $(ROOT_FS): $(ALPINE_TAR) buildenv.sh
 	$(ESCALATE_CMD) cp /etc/resolv.conf $(MOUNTPOINT)/etc/resolv.conf
 	$(ESCALATE_CMD) cp https-server.py $(MOUNTPOINT)/
 	$(ESCALATE_CMD) cp ../../../ldpreload.so $(MOUNTPOINT)/
-	$(ESCALATE_CMD) cp ../../../../ias-client-key.pem $(MOUNTPOINT)/
-	$(ESCALATE_CMD) cp ../../../../ias-client-cert.pem $(MOUNTPOINT)/
 	$(ESCALATE_CMD) install buildenv.sh $(MOUNTPOINT)/usr/sbin
 	$(ESCALATE_CMD) chroot $(MOUNTPOINT) /bin/sh /usr/sbin/buildenv.sh
 	$(ESCALATE_CMD) umount $(MOUNTPOINT)

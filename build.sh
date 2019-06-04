@@ -62,10 +62,6 @@ if [[ $VARIANT == "graphene" ]] ; then
     make deps/graphene/Runtime/pal-Linux-SGX
 fi
 
-# Copy client certificates required to talk to Intel's Attestation
-# Service
-# cp ../../certs/ias-client*.pem .
-
 if [ $VARIANT == "sgxsdk" ] ; then
     echo "Building wolfSSL SGX library ..."
     # The "make ... clean"s make sure there is no residual state from
@@ -84,9 +80,6 @@ if [[ ! -d wolfssl-examples ]] ; then
     pushd wolfssl-examples
     git checkout 94b94262b45d264a40d484060cee595b26bdbfd7
     patch -p1 < ../../wolfssl-examples.patch || exit 1
-    # Copy certificates required to talk to Intel Attestation Service
-    ln -s ../../../ias-client-key.pem SGX_Linux/ias-client-key.pem
-    ln -s ../../../ias-client-cert.pem SGX_Linux/ias-client-cert.pem
     popd
 fi
 popd

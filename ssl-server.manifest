@@ -35,6 +35,4 @@ sgx.trusted_files.libssl = file:deps/graphene/Runtime/libssl.so.1.0.0
 # BUG Graphene cannot handle '-' character in trusted_files name
 
 sgx.trusted_files.cacertificates = file:/etc/ssl/certs/ca-certificates.crt
-sgx.trusted_files.client_ias_key = file:ias-client-key.pem
-sgx.trusted_files.client_ias_cert = file:ias-client-cert.pem
 sgx.trusted_files.etcresolv = file:/etc/resolv.conf
