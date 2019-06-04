@@ -51,7 +51,7 @@ index b4dd62c..9055109 100644
  
  trusted/Wolfssl_Enclave_t.o: ./trusted/Wolfssl_Enclave_t.c
 diff --git a/SGX_Linux/sgx_u.mk b/SGX_Linux/sgx_u.mk
-index 4d157cd..14c1959 100644
+index 4d157cd..811a1e9 100644
 --- a/SGX_Linux/sgx_u.mk
 +++ b/SGX_Linux/sgx_u.mk
 @@ -30,6 +30,8 @@ else
@@ -63,6 +63,15 @@ index 4d157cd..14c1959 100644
  ######## App Settings ########
  
  ifneq ($(SGX_MODE), HW)
+@@ -38,7 +40,7 @@ else
+ 	Urts_Library_Name := sgx_urts
+ endif
+ 
+-Wolfssl_C_Extra_Flags := -DWOLFSSL_SGX
++Wolfssl_C_Extra_Flags := -DWOLFSSL_SGX -DUSE_WOLFSSL
+ Wolfssl_Include_Paths := -I$(WOLFSSL_ROOT)/ \
+ 						 -I$(WOLFSSL_ROOT)/wolfcrypt/
+ 
 @@ -54,8 +56,8 @@ endif
  
  
@@ -79,7 +88,7 @@ index 4d157cd..14c1959 100644
  endif
  
 -App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -lpthread
-+App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -L$(SGX_RA_TLS_ROOT)/deps/local/lib -l$(Urts_Library_Name) -lpthread -lcurl-openssl -lssl -lcrypto -lz -ldl
++App_Link_Flags := $(SGX_COMMON_CFLAGS) -L$(SGX_LIBRARY_PATH) -L$(SGX_RA_TLS_ROOT)/deps/local/lib -l$(Urts_Library_Name) -lpthread $(SGX_RA_TLS_ROOT)/deps/local/lib/libcurl-wolfssl.a $(SGX_RA_TLS_ROOT)/deps/local/lib/libwolfssl.a -lz -lm
  
  ifneq ($(SGX_MODE), HW)
  	App_Link_Flags += -lsgx_uae_service_sim
