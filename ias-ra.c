@@ -13,7 +13,7 @@
 #include <wolfssl/wolfcrypt/coding.h>
 #elif defined(USE_MBEDTLS)
 #include <mbedtls/base64.h>
-#elif
+#else
 #error Must use one of OpenSSL/wolfSSL/mbedtls
 #endif
 

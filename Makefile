@@ -67,10 +67,10 @@ openssl:
 mbedtls/libra-challenger.a : mbedtls ra.o mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-mbedtls/libra-attester.a : mbedtls ra.o mbedtls-ra-attester.o ias-ra-openssl.o
+mbedtls/libra-attester.a : mbedtls ra.o mbedtls-ra-attester.o ias-ra-mbedtls.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
-mbedtls/libnonsdk-ra-attester.a : mbedtls ra.o mbedtls-ra-attester.o ias-ra-openssl.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
+mbedtls/libnonsdk-ra-attester.a : mbedtls ra.o mbedtls-ra-attester.o ias-ra-mbedtls.o nonsdk-ra-attester.o messages.pb-c.o sgx_report.o
 	$(AR) rcs $@ $(filter %.o, $^)
 
 nonsdk-ra-attester.o: messages.pb-c.c
@@ -84,7 +84,9 @@ wolfssl/libra-challenger.a: wolfssl ra.o wolfssl-ra-challenger.o wolfssl-ra.o ra
 ias-ra-%.c: ias-ra.c
 	cp $< $@
 
+ias-ra-openssl.o: CFLAGS += -DUSE_OPENSSL
 ias-ra-wolfssl.o: CFLAGS += -DUSE_WOLFSSL
+ias-ra-mbedtls.o: CFLAGS += -DUSE_MBEDTLS
 
 wolfssl-ra-attester.o: ecdsa-sample-data/real/sample_data.h ecdsa-attestation-collateral.h
 wolfssl-ra-challenger.o: ecdsa-sample-data/real/sample_data.h
@@ -137,8 +139,8 @@ SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -Ideps/local/include \
 MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
 	ra_tls_options.c ra.c \
 	$(MBEDTLS_RA_ATTESTER_SRC) $(MBEDTLS_RA_CHALLENGER_SRC) \
-	$(NONSDK_RA_ATTESTER_SRC) ias-ra-openssl.c
-MBEDTLS_SSL_SERVER_LIBS=-l:libcurl-openssl.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a -l:libssl.a -l:libcrypto.a -ldl
+	$(NONSDK_RA_ATTESTER_SRC) ias-ra-mbedtls.o
+MBEDTLS_SSL_SERVER_LIBS=-l:libcurl-mbedtls.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a
 
 mbedtls-ssl-server: $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
 	$(CC) $(MBEDTLS_SSL_SERVER_SRC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib/ $(MBEDTLS_SSL_SERVER_LIBS)
@@ -266,7 +268,7 @@ ifndef ECDSA
 endif
 
 mbedtls-ra-attester: tests/ra-attester.c mbedtls/libnonsdk-ra-attester.a ra_tls_options.c 
-	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -lm -l:libz.a -ldl
+	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-mbedtls.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libz.a
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -288,7 +290,7 @@ mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm
 
 .PHONY=deps
-deps: deps/linux-sgx deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
+deps: deps/linux-sgx deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libcurl-mbedtls.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
 ifndef ECDSA
 deps: deps/local/lib/libwolfssl.sgx.static.lib.a
 endif
@@ -348,6 +350,31 @@ deps/local/lib/libwolfssl.sgx.static.lib.a: deps/wolfssl/IDE/LINUX-SGX/libwolfss
 
 deps/local/lib/libwolfssl.sgx.static.lib.a: deps/local/lib/libwolfssl.a
 
+## mbedtls
+
+ifndef DEBUG
+MBEDTLS_RELEASE_TYPE=Release
+else
+MBEDTLS_RELEASE_TYPE=Debug
+endif
+
+deps/mbedtls/CMakeLists.txt:
+	cd deps && git clone https://github.com/ARMmbed/mbedtls.git
+	cd deps/mbedtls && git checkout mbedtls-2.5.1
+	# Add  -DCMAKE_BUILD_TYPE=Debug for Debug
+	cd deps/mbedtls && patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
+	cd deps/mbedtls && patch -p1 < ../../mbedtls-ssl-server.patch
+	cd deps/mbedtls && patch -p1 < ../../mbedtls-client.patch
+	cd deps/mbedtls && cmake -DCMAKE_BUILD_TYPE=$(MBEDTLS_RELEASE_TYPE) -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$(CC) -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" .
+
+deps/local/lib/libmbedtls.a: deps/mbedtls/CMakeLists.txt
+	$(MAKE) -C deps/mbedtls
+	cd deps/mbedtls && cmake -D CMAKE_INSTALL_PREFIX=$(shell readlink -f deps/local) -P cmake_install.cmake
+
+.PHONY=mrproper-mbedtls
+mrproper-mbedtls:
+	$(RM) -rf deps/mbedtls deps/local/lib/libmbedtls.a deps/local/lib/libmbedcrypto.a deps/local/lib/libmbedx509.a
+
 deps/curl/configure:
 	cd deps && git clone https://github.com/curl/curl.git
 	cd deps/curl && git checkout curl-7_47_0
@@ -366,9 +393,15 @@ deps/local/lib/libcurl-wolfssl.a: deps/curl/configure deps/local/lib/libwolfssl.
 
 deps/local/lib/libcurl-openssl.a: deps/curl/configure deps/local/lib/libcrypto.a
 	cp -a deps/curl deps/curl-openssl
-	cd deps/curl-openssl && CFLAGS="-fPIC -O2" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
+	cd deps/curl-openssl && CFLAGS="-fPIC" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
 	cd deps/curl-openssl && $(MAKE) && $(MAKE) install
 	rename 's/libcurl/libcurl-openssl/' deps/local/lib/libcurl.*
+
+deps/local/lib/libcurl-mbedtls.a: deps/curl/configure deps/local/lib/libmbedtls.a
+	cp -a deps/curl deps/curl-mbedtls
+	cd deps/curl-mbedtls && CFLAGS="-fPIC" LIBS="" ./configure $(CURL_CONFFLAGS) --without-ssl --with-mbedtls=$(shell readlink -f deps/local)
+	cd deps/curl-mbedtls && $(MAKE) && $(MAKE) install
+	rename 's/libcurl/libcurl-mbedtls/' deps/local/lib/libcurl.*
 
 deps/zlib/configure:
 	cd deps && git clone https://github.com/madler/zlib.git
@@ -439,7 +472,9 @@ ifdef ECDSA
 	cd deps/graphene/Pal/src/host/Linux-SGX && git clone https://github.com/thomasknauth/graphene-sgx-driver.git sgx-driver
 	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && git checkout ecdsa
 endif
-	cd deps/graphene && git checkout $(GRAPHENE_COMMIT)
+# Use --force here because some directories moved into standalone
+# repositories at some point.
+	cd deps/graphene && git checkout --force $(GRAPHENE_COMMIT)
 	cd deps/graphene && openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
 
 deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
