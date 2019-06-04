@@ -6,11 +6,10 @@ struct ra_tls_options my_ra_tls_options = {
               0x00, 0x00, 0x00, 0x00,
               0x00, 0x00, 0x00, 0x00}},
     .quote_type = SGX_UNLINKABLE_SIGNATURE,
-    .ias_key_file = "./ias-client-key.pem",
-    .ias_cert_file = "./ias-client-cert.pem",
-    .ias_server = "test-as.sgx.trustedservices.intel.com:443"
+    .ias_server = "api.trustedservices.intel.com/sgx/dev",
+    .subscription_key = "0123456789abcdef0123456789abcdef"
 };
 
 struct ecdsa_ra_tls_options my_ecdsa_ra_tls_options = {
-    .subscription_key = "42ceac9c0d4c41e388ae31a739184557"
+    .subscription_key = "0123456789abcdef0123456789abcdef"
 };

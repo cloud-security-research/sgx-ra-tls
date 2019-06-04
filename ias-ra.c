@@ -49,7 +49,7 @@ void extract_certificates_from_response_header
 )
 {
     // Locate x-iasreport-signature HTTP header field in the response.
-    const char response_header_name[] = "x-iasreport-signing-certificate: ";
+    const char response_header_name[] = "X-IASReport-Signing-Certificate: ";
     char *field_begin = memmem(header,
                                header_len,
                                response_header_name,
@@ -114,7 +114,7 @@ void parse_response_header
     uint32_t* signature_size
 )
 {
-    const char sig_tag[] = "x-iasreport-signature: ";
+    const char sig_tag[] = "X-IASReport-Signature: ";
     char* sig_begin = memmem((const char*) header,
                              header_len,
                              sig_tag,
@@ -184,19 +184,24 @@ void obtain_attestation_verification_report
         // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
         char url[512];
-        ret = snprintf(url, sizeof(url), "https://%s/attestation/sgx/v2/report",
-                           opts->ias_server);
+        ret = snprintf(url, sizeof(url), "https://%s/attestation/v3/report",
+                       opts->ias_server);
         assert(ret < (int) sizeof(url));
         curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_SSLCERTTYPE, "PEM");
-        curl_easy_setopt(curl, CURLOPT_SSLCERT, opts->ias_cert_file);
-        curl_easy_setopt(curl, CURLOPT_SSLKEY, opts->ias_key_file);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
     
         struct curl_slist *headers = NULL;
         headers = curl_slist_append(headers, "Content-Type: application/json");
 
+        char buf[128];
+        int rc = snprintf(buf, sizeof(buf), "Ocp-Apim-Subscription-Key: %.32s",
+                          opts->subscription_key);
+        assert(rc < (int) sizeof(buf));
+
+        headers = curl_slist_append(headers, buf);
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        
         const char json_template[] = "{\"isvEnclaveQuote\":\"%s\"}";
         unsigned char quote_base64[quote_size * 2];
         uint32_t quote_base64_len = sizeof(quote_base64);

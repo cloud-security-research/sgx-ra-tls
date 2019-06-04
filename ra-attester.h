@@ -6,14 +6,11 @@
 struct ra_tls_options {
     sgx_spid_t spid;
     sgx_quote_sign_type_t quote_type;
-    /* \0 terminated file name; libcurl, used to interact with IAS,
-       basically expects a file name. It is super-complicated to pass
-       a memory buffer with the certificate and key to it. */
-    const char ias_key_file[512];
-    const char ias_cert_file[512];
-    /* \0 terminated string of domain name/IP and port, e.g.,
-       test-as.sgx.trustedservices.intel.com:443 */
+    /* NULL-terminated string of domain name/IP, port and path prefix,
+       e.g., api.trustedservices.intel.com/sgx/dev for development and
+       api.trustedservices.intel.com/sgx for production. */
     const char ias_server[512];
+    const char subscription_key[32];
 };
 
 struct ecdsa_ra_tls_options {
