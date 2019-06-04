@@ -6,11 +6,15 @@
 #include <string.h>
 #include <curl/curl.h>
 
-#ifndef USE_WOLFSSL
+#if defined(USE_OPENSSL)
 #include <openssl/evp.h> // for base64 encode/decode
-#else
+#elif defined(USE_WOLFSSL)
 #include <wolfssl/options.h>
 #include <wolfssl/wolfcrypt/coding.h>
+#elif defined(USE_MBEDTLS)
+#include <mbedtls/base64.h>
+#elif
+#error Must use one of OpenSSL/wolfSSL/mbedtls
 #endif
 
 #include <stdint.h>
@@ -133,7 +137,7 @@ void parse_response_header
 }
 
 /**
- * 
+ * @return Length of base64 encoded data including terminating NUL-byte.
  */
 static void base64_encode
 (
@@ -147,17 +151,23 @@ static void base64_encode
     assert(*out_len >= (in_len + 3 - 1) / 3 * 4 + 1);
     bzero(out, *out_len);
     
-#ifndef USE_WOLFSSL
+#if defined(USE_OPENSSL)
         int ret = EVP_EncodeBlock(out, in, in_len);
         // + 1 since EVP_EncodeBlock() returns length excluding the terminating \0.
         assert((size_t) ret + 1 <= *out_len);
         *out_len = ret + 1;
-#else
+#elif defined(USE_WOLFSSL)
         int ret = Base64_Encode_NoNl(in, in_len, out, out_len);
         assert(ret == 0);
         // No need append terminating \0 since we memset() the whole
         // buffer in the beginning.
         *out_len += 1;
+#elif defined(USE_MBEDTLS)
+        size_t olen;
+        int ret = mbedtls_base64_encode(out, *out_len, &olen, in, in_len);
+        assert(ret == 0);
+        assert(olen <= UINT32_MAX);
+        *out_len = (uint32_t) olen;
 #endif
 }
 
