@@ -460,7 +460,7 @@ GRAPHENE_COMMIT?=9e30c4ba090c2d9e1cc629918a603a7f87474820
 GRAPHENE_BRANCH?=flexible_launch_control
 GRAPHENE_URI?=https://github.com/thomasknauth/graphene.git
 else
-GRAPHENE_COMMIT?=e01769337c38f67d7ccd7a7cadac4f9df0c6c65e
+GRAPHENE_COMMIT?=ba169becae4846dbca76a41c91f785a80fe15e7e
 GRAPHENE_URI?=https://github.com/oscarlab/graphene.git
 endif
 
