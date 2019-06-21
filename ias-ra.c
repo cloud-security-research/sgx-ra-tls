@@ -24,12 +24,9 @@
 #include "ra.h"
 #include "ra-attester.h"
 #include "ias-ra.h"
+#include "curl_helper.h"
 
-struct buffer_and_size {
-    char* data;
-    size_t len;
-};
-
+static
 size_t accumulate_function(void *ptr, size_t size, size_t nmemb, void *userdata) {
     struct buffer_and_size* s = (struct buffer_and_size*) userdata;
     s->data = (char*) realloc(s->data, s->len + size * nmemb);
@@ -38,6 +35,36 @@ size_t accumulate_function(void *ptr, size_t size, size_t nmemb, void *userdata)
     s->len += size * nmemb;
     
     return size * nmemb;
+}
+
+void http_get
+(
+    CURL* curl,
+    const char* url,
+    struct buffer_and_size* header,
+    struct buffer_and_size* body,
+    struct curl_slist* request_headers,
+    char* request_body
+)
+{
+    curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
+    
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, accumulate_function);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, header);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, accumulate_function);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, body);
+
+    if (request_headers) {
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, request_headers);
+    }
+    if (request_body) {
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body);
+    }
+
+    CURLcode res = curl_easy_perform(curl);
+    assert(res == CURLE_OK);
 }
 
 static const char pem_marker_begin[] = "-----BEGIN CERTIFICATE-----";
@@ -183,89 +210,53 @@ void obtain_attestation_verification_report
     attestation_verification_report_t* attn_report
 )
 {
-    CURL *curl;
-    CURLcode res;
     int ret;
   
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-
-    curl = curl_easy_init();
-    if(curl) {
-        // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
-        curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_2);
-        char url[512];
-        ret = snprintf(url, sizeof(url), "https://%s/attestation/v3/report",
-                       opts->ias_server);
-        assert(ret < (int) sizeof(url));
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 1L);
+    char url[512];
+    ret = snprintf(url, sizeof(url), "https://%s/attestation/v3/report",
+                   opts->ias_server);
+    assert(ret < (int) sizeof(url));
     
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
+    char buf[128];
+    int rc = snprintf(buf, sizeof(buf), "Ocp-Apim-Subscription-Key: %.32s",
+                      opts->subscription_key);
+    assert(rc < (int) sizeof(buf));
 
-        char buf[128];
-        int rc = snprintf(buf, sizeof(buf), "Ocp-Apim-Subscription-Key: %.32s",
-                          opts->subscription_key);
-        assert(rc < (int) sizeof(buf));
-
-        headers = curl_slist_append(headers, buf);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    struct curl_slist *request_headers =
+        curl_slist_append(NULL, "Content-Type: application/json");
+    request_headers = curl_slist_append(request_headers, buf);
         
-        const char json_template[] = "{\"isvEnclaveQuote\":\"%s\"}";
-        unsigned char quote_base64[quote_size * 2];
-        uint32_t quote_base64_len = sizeof(quote_base64);
-        char json[quote_size * 2];
+    const char json_template[] = "{\"isvEnclaveQuote\":\"%s\"}";
+    unsigned char quote_base64[quote_size * 2];
+    uint32_t quote_base64_len = sizeof(quote_base64);
+    char json[quote_size * 2];
 
-        base64_encode((uint8_t*) quote, quote_size,
-                      quote_base64, &quote_base64_len);
+    base64_encode((uint8_t*) quote, quote_size,
+                  quote_base64, &quote_base64_len);
 
-        snprintf(json, sizeof(json), json_template, quote_base64);
-    
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json);
+    snprintf(json, sizeof(json), json_template, quote_base64);
 
-        struct buffer_and_size header = {(char*) malloc(1), 0};
-        struct buffer_and_size body = {(char*) malloc(1), 0};
-    
-        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, accumulate_function);
-        curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, accumulate_function);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-
-        /* Perform the request. */
-        res = curl_easy_perform(curl);
-        if (res != 0) {
-            printf("curl_easy_perform= %d\n", res);
-        }
+    CURL *curl = curl_easy_init();
+    assert(curl != NULL);
+    struct buffer_and_size header = {(char*) malloc(1), 0};
+    struct buffer_and_size body = {(char*) malloc(1), 0};
+    http_get(curl, url, &header, &body, request_headers, json);
         
-        /* printf("%s", header.data); */
-        /* printf("body= %s", body.data); */
+    parse_response_header(header.data, header.len,
+                          attn_report->ias_report_signature,
+                          sizeof(attn_report->ias_report_signature),
+                          &attn_report->ias_report_signature_len);
 
-        parse_response_header(header.data, header.len,
-                              attn_report->ias_report_signature,
-                              sizeof(attn_report->ias_report_signature),
-                              &attn_report->ias_report_signature_len);
+    assert(sizeof(attn_report->ias_report) >= body.len);
+    memcpy(attn_report->ias_report, body.data, body.len);
+    attn_report->ias_report_len = body.len;
 
-        assert(sizeof(attn_report->ias_report) >= body.len);
-        memcpy(attn_report->ias_report, body.data, body.len);
-        attn_report->ias_report_len = body.len;
-
-        extract_certificates_from_response_header(curl,
-                                                  header.data, header.len,
-                                                  attn_report);
+    extract_certificates_from_response_header(curl,
+                                              header.data, header.len,
+                                              attn_report);
     
-        /* Check for errors */
-        if(res != CURLE_OK)
-            fprintf(stderr, "curl_easy_perform() failed: %s\n",
-                    curl_easy_strerror(res));
-
-        /* always cleanup */
-        curl_easy_cleanup(curl);
-
-        free(header.data);
-        free(body.data);
-    }
-
-    curl_global_cleanup();
+    curl_easy_cleanup(curl);
+    free(header.data);
+    free(body.data);
+    curl_slist_free_all(request_headers);
 }
