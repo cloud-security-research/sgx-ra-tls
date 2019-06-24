@@ -1,12 +1,10 @@
 # Makefile to build non-SGX-SDK-based RA-TLS client and server
 # programs.
 
-# TODO: We must use Curl with OpenSSL (see https://github.com/cloud-security-research/sgx-ra-tls/issues/1). We are stuck with two libs for now.
-
 export SGX_SDK?=/opt/intel/sgxsdk
 
-SGX_DCAP_URI=https://github.com/thomasknauth/SGXDataCenterAttestationPrimitives.git
-SGX_DCAP_COMMIT=962632364bcfc827bf6473b814338e4865a709cf
+SGX_DCAP_URI=https://github.com/intel/SGXDataCenterAttestationPrimitives
+SGX_DCAP_COMMIT=bfab1376480f760757738092399d0d99b22f4dfd
 SGX_DCAP?=deps/SGXDataCenterAttestationPrimitives/
 
 SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc -I$(SGX_DCAP)/QuoteVerification/Src/AttestationLibrary/include
@@ -431,6 +429,7 @@ deps/SGXDataCenterAttestationPrimitives:
 ifdef ECDSA
 	cd deps && git clone $(SGX_DCAP_URI)
 	cd $@ && git checkout $(SGX_DCAP_COMMIT)
+	cd $@ && patch -p1 < ../../00_SGXDataCenterAttestationPrimitives.patch
 else
 	mkdir -p $@
 endif

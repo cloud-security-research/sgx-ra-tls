@@ -1,0 +1,1815 @@
+diff --git a/QuoteVerification/Src/AttestationLibrary/include/SgxEcdsaAttestation/QuoteVerification.h b/QuoteVerification/Src/AttestationLibrary/include/SgxEcdsaAttestation/QuoteVerification.h
+index 5143964..dca13ae 100644
+--- a/QuoteVerification/Src/AttestationLibrary/include/SgxEcdsaAttestation/QuoteVerification.h
++++ b/QuoteVerification/Src/AttestationLibrary/include/SgxEcdsaAttestation/QuoteVerification.h
+@@ -25,7 +25,9 @@
+ * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
+ * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
++#ifdef __cplusplus
+ extern "C" {
++#endif
+ #ifndef SGX_ECDSA_QUOTE_VERIFICATION_H_
+ #define SGX_ECDSA_QUOTE_VERIFICATION_H_
+ 
+@@ -363,4 +365,6 @@ QVL_API Status sgxAttestationVerifyPCKRevocationList(const char *crl, const char
+ /** @}*/
+ 
+ #endif //SGX_ECDSA_QUOTE_VERIFICATION_H_
++#ifdef __cplusplus
+ };
++#endif
+diff --git a/SampleCode/QuoteGenerationSample/App/App.cpp b/SampleCode/QuoteGenerationSample/App/App.cpp
+index 99e1cbf..c08b11d 100644
+--- a/SampleCode/QuoteGenerationSample/App/App.cpp
++++ b/SampleCode/QuoteGenerationSample/App/App.cpp
+@@ -36,8 +36,13 @@
+  * demonstrate the usage of quote generation.
+  */
+ 
++#include <assert.h>
++#include <fcntl.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ #if defined(_MSC_VER)
+ #include <Windows.h>
+ #include <tchar.h>
+@@ -105,6 +110,7 @@ int main(int argc, char* argv[])
+     uint8_t* p_quote_buffer = NULL;
+     sgx_target_info_t qe_target_info; 
+     sgx_report_t app_report;
++    int fd = -1, rc = -1;
+ 
+     printf("This step is optional: the default enclave load policy is persistent: \n");
+     printf("set the enclave load policy as persistent:");
+@@ -160,7 +166,14 @@ int main(int argc, char* argv[])
+         goto CLEANUP;
+     }
+     printf("succeed!");
+-        
++
++    fd = open("quote.dat", O_CREAT | O_WRONLY, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
++    assert(-1 != fd);
++    rc = write(fd, p_quote_buffer, quote_size);
++    assert(rc == quote_size);
++    close(fd);
++    fd = -1;
++    
+     printf("\n Clean up the enclave load policy:");
+     qe3_ret = sgx_qe_cleanup_by_policy();
+     if(SGX_QL_SUCCESS != qe3_ret) {
+diff --git a/SampleCode/QuoteServiceSample/App/App.cpp b/SampleCode/QuoteServiceSample/App/App.cpp
+new file mode 100644
+index 0000000..c0041b0
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/App.cpp
+@@ -0,0 +1,233 @@
++/*
++ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above copyright
++ *     notice, this list of conditions and the following disclaimer in
++ *     the documentation and/or other materials provided with the
++ *     distribution.
++ *   * Neither the name of Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++/**
++ * File: app.cpp
++ *
++ * Description: Sample application to
++ * demonstrate the usage of quote generation.
++ */
++
++#include <assert.h>
++#include <arpa/inet.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <sys/socket.h>
++#include <sys/types.h>
++#include <unistd.h>
++#if defined(_MSC_VER)
++#include <Windows.h>
++#include <tchar.h>
++#endif
++
++#include "sgx_urts.h"
++#include "sgx_report.h"
++#include "sgx_dcap_ql_wrapper.h"
++#include "sgx_pce.h"
++#include "sgx_error.h"
++
++#include "Enclave_u.h"
++
++#include "ecdsa-aesmd-messages.pb-c.h"
++
++#if defined(_MSC_VER)
++#define ENCLAVE_PATH _T("enclave.signed.dll")
++#else
++#define ENCLAVE_PATH "enclave.signed.so"
++#endif
++
++static void print_byte_array(FILE* f, uint8_t* data, int size) {
++    for (int i = 0; i < size; ++i) {
++        fprintf(f, "%02X", data[i]);
++    }
++}
++
++bool create_app_enclave_report(sgx_target_info_t qe_target_info, sgx_report_t *app_report)
++{
++        bool ret = true;
++        uint32_t retval = 0;
++        sgx_status_t sgx_status = SGX_SUCCESS;
++        sgx_enclave_id_t eid = 0;
++        int launch_token_updated = 0;
++        sgx_launch_token_t launch_token = { 0 };
++
++        sgx_status = sgx_create_enclave(ENCLAVE_PATH,
++                SGX_DEBUG_FLAG,
++                &launch_token,
++                &launch_token_updated,
++                &eid,
++                NULL);
++        if (SGX_SUCCESS != sgx_status) {
++                printf("Error, call sgx_create_enclave fail [%s], SGXError:%04x.\n", __FUNCTION__, sgx_status);
++                ret = false;
++                goto CLEANUP;
++        }
++
++
++        sgx_status = enclave_create_report(eid,
++                &retval,
++                &qe_target_info,
++                app_report);
++        if ((SGX_SUCCESS != sgx_status) || (0 != retval)) {
++                printf("\nCall to get_app_enclave_report() failed\n");
++                ret = false;
++                goto CLEANUP;
++        }
++
++CLEANUP:
++        sgx_destroy_enclave(eid);
++        return ret;
++}
++
++static void process_initquoterequest(int fd, Quoteservice__Message__Request* msg) {
++    Quoteservice__Message__Response__InitQuoteResponse response =
++        QUOTESERVICE__MESSAGE__RESPONSE__INIT_QUOTE_RESPONSE__INIT;
++    Quoteservice__Message__Response wrapper_msg =
++        QUOTESERVICE__MESSAGE__RESPONSE__INIT;
++    wrapper_msg.initquoteresponse = &response;
++
++    sgx_target_info_t qe_target_info = {0, };
++    quote3_error_t qe3_ret = sgx_qe_get_target_info(&qe_target_info);
++    assert(qe3_ret == SGX_QL_SUCCESS);
++    response.targetinfo.data = (uint8_t*) &qe_target_info;
++    response.targetinfo.len = sizeof(qe_target_info);
++    response.has_targetinfo = 1;
++
++    qe3_ret = sgx_qe_get_quote_size(&response.quote_size);
++    assert(SGX_QL_SUCCESS == qe3_ret);
++    
++    uint32_t payload_len = quoteservice__message__response__get_packed_size(&wrapper_msg);
++    uint32_t total_len = payload_len + sizeof(payload_len);
++    uint8_t buf[1024];
++    assert(total_len <= sizeof(buf));
++    memcpy(buf, (uint8_t*)&payload_len, sizeof(payload_len));
++    quoteservice__message__response__pack(&wrapper_msg, buf + sizeof(payload_len));
++
++    int rc = send(fd, buf, total_len, 0);
++    assert(rc == total_len);
++}
++
++static void process_getquoterequest(int fd, Quoteservice__Message__Request* msg) {
++    assert(NULL != msg->getquoterequest);
++    
++    Quoteservice__Message__Request__GetQuoteRequest* request =
++        (Quoteservice__Message__Request__GetQuoteRequest*) msg->getquoterequest;
++    Quoteservice__Message__Response__GetQuoteResponse response =
++        QUOTESERVICE__MESSAGE__RESPONSE__GET_QUOTE_RESPONSE__INIT;
++    Quoteservice__Message__Response wrapper_msg =
++        QUOTESERVICE__MESSAGE__RESPONSE__INIT;
++    wrapper_msg.getquoteresponse = &response;
++
++    uint32_t quote_size = 0;
++    quote3_error_t qe3_ret = sgx_qe_get_quote_size(&quote_size);
++    assert(SGX_QL_SUCCESS == qe3_ret);
++
++    uint8_t* quote_buffer = (uint8_t*) calloc(1, quote_size);
++    assert(NULL != quote_buffer);
++
++    print_byte_array(stdout, request->report.data, request->report.len);
++    printf("\n");
++    
++    qe3_ret = sgx_qe_get_quote((sgx_report_t*) request->report.data,
++                               quote_size, quote_buffer);
++    assert(SGX_QL_SUCCESS == qe3_ret);
++    response.quote.data = quote_buffer;
++    response.quote.len  = quote_size;
++    response.has_quote  = 1;
++    
++    uint32_t payload_len = quoteservice__message__response__get_packed_size(&wrapper_msg);
++    uint32_t total_len = payload_len + sizeof(payload_len);
++    uint8_t buf[4096];
++    assert(total_len <= sizeof(buf));
++    memcpy(buf, (uint8_t*)&payload_len, sizeof(payload_len));
++    quoteservice__message__response__pack(&wrapper_msg, buf + sizeof(payload_len));
++
++    int rc = send(fd, buf, total_len, 0);
++    assert(rc == total_len);
++}
++
++static void accept_loop(void) {
++    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
++    assert(-1 != sockfd);
++    struct sockaddr_in srvaddr = { 0, };
++    srvaddr.sin_family = AF_INET;
++    srvaddr.sin_port = htons(12345);
++    inet_pton(AF_INET, "127.0.0.1", &srvaddr.sin_addr);
++    int enable = 1;
++    int ret = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
++    assert(ret != -1);
++    ret = setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(enable));
++    assert(ret != -1);
++    ret = bind(sockfd, (struct sockaddr*)&srvaddr, sizeof(srvaddr));
++    assert(-1 != ret);
++    ret = listen(sockfd, 0);
++    assert(-1 != ret);
++
++    do {
++        struct sockaddr_in clientaddr;
++        socklen_t client_len = sizeof(clientaddr);
++        const int clientfd = accept(sockfd, (struct sockaddr*) &clientaddr, &client_len);
++        assert(-1 != clientfd);
++
++        do {
++            uint32_t msglen;
++            ret = read(clientfd, &msglen, sizeof(msglen));
++            uint8_t buf[512];
++            assert(msglen <= sizeof(buf));
++            ret = read(clientfd, buf, msglen);
++            if (ret == 0) break; // EOF, i.e., client hung up
++            assert(ret == msglen);
++
++            Quoteservice__Message__Request* msg =
++                quoteservice__message__request__unpack(NULL, msglen, buf);
++
++            if (msg->initquoterequest) {
++                process_initquoterequest(clientfd, msg);
++            } else if (msg->getquoterequest) {
++                process_getquoterequest(clientfd, msg);
++            } else {
++                assert(0);
++            }
++        } while (1);
++        
++        close(clientfd);
++    } while (1);
++}
++
++int main(int argc, char* argv[])
++{
++    (void)(argc);
++    (void)(argv);
++
++    accept_loop();
++    
++    return 0;
++}
+diff --git a/SampleCode/QuoteServiceSample/App/App.cpp~ b/SampleCode/QuoteServiceSample/App/App.cpp~
+new file mode 100644
+index 0000000..ed95239
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/App.cpp~
+@@ -0,0 +1,293 @@
++/*
++ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above copyright
++ *     notice, this list of conditions and the following disclaimer in
++ *     the documentation and/or other materials provided with the
++ *     distribution.
++ *   * Neither the name of Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++/**
++ * File: app.cpp
++ *
++ * Description: Sample application to
++ * demonstrate the usage of quote generation.
++ */
++
++#include <assert.h>
++#include <arpa/inet.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <sys/socket.h>
++#include <sys/types.h>
++#include <unistd.h>
++#if defined(_MSC_VER)
++#include <Windows.h>
++#include <tchar.h>
++#endif
++
++#include "sgx_urts.h"
++#include "sgx_report.h"
++#include "sgx_dcap_ql_wrapper.h"
++#include "sgx_pce.h"
++#include "sgx_error.h"
++
++#include "Enclave_u.h"
++
++#include "messages.pb-c.h"
++
++#if defined(_MSC_VER)
++#define ENCLAVE_PATH _T("enclave.signed.dll")
++#else
++#define ENCLAVE_PATH "enclave.signed.so"
++#endif
++
++
++bool create_app_enclave_report(sgx_target_info_t qe_target_info, sgx_report_t *app_report)
++{
++        bool ret = true;
++        uint32_t retval = 0;
++        sgx_status_t sgx_status = SGX_SUCCESS;
++        sgx_enclave_id_t eid = 0;
++        int launch_token_updated = 0;
++        sgx_launch_token_t launch_token = { 0 };
++
++        sgx_status = sgx_create_enclave(ENCLAVE_PATH,
++                SGX_DEBUG_FLAG,
++                &launch_token,
++                &launch_token_updated,
++                &eid,
++                NULL);
++        if (SGX_SUCCESS != sgx_status) {
++                printf("Error, call sgx_create_enclave fail [%s], SGXError:%04x.\n", __FUNCTION__, sgx_status);
++                ret = false;
++                goto CLEANUP;
++        }
++
++
++        sgx_status = enclave_create_report(eid,
++                &retval,
++                &qe_target_info,
++                app_report);
++        if ((SGX_SUCCESS != sgx_status) || (0 != retval)) {
++                printf("\nCall to get_app_enclave_report() failed\n");
++                ret = false;
++                goto CLEANUP;
++        }
++
++CLEANUP:
++        sgx_destroy_enclave(eid);
++        return ret;
++}
++
++static void process_initquoterequest(int fd, Quoteservice__Message__Request* msg) {
++    Quoteservice__Message__Response__InitQuoteResponse response =
++        QUOTESERVICE__MESSAGE__RESPONSE__INIT_QUOTE_RESPONSE__INIT;
++    Quoteservice__Message__Response wrapper_msg =
++        QUOTESERVICE__MESSAGE__RESPONSE__INIT;
++    wrapper_msg.initquoteresponse = &response;
++
++    sgx_target_info_t qe_target_info = {0, };
++    quote3_error_t qe3_ret = sgx_qe_get_target_info(&qe_target_info);
++    assert(qe3_ret == SGX_QL_SUCCESS);
++    response.targetinfo.data = (uint8_t*) &qe_target_info;
++    response.targetinfo.len = sizeof(qe_target_info);
++    response.has_targetinfo = 1;
++    
++    uint32_t payload_len = quoteservice__message__response__get_packed_size(&wrapper_msg);
++    uint32_t total_len = payload_len + sizeof(payload_len);
++    uint8_t buf[1024];
++    assert(total_len <= sizeof(buf));
++    memcpy(buf, (uint8_t*)&payload_len, sizeof(payload_len));
++    quoteservice__message__response__pack(&wrapper_msg, buf + sizeof(payload_len));
++
++    int rc = send(fd, buf, total_len, 0);
++    assert(rc == total_len);
++}
++
++static void process_getquoterequest(int fd, Quoteservice__Message__Request* msg) {
++    Quoteservice__Message__Request__GetQuoteRequest* request =
++        (Quoteservice__Message__Request__GetQuoteRequest*) msg;
++    Quoteservice__Message__Response__GetQuoteResponse response =
++        QUOTESERVICE__MESSAGE__RESPONSE__GET_QUOTE_RESPONSE__INIT;
++    Quoteservice__Message__Response wrapper_msg =
++        QUOTESERVICE__MESSAGE__RESPONSE__INIT;
++    wrapper_msg.getquoteresponse = &response;
++
++    uint32_t quote_size = 0;
++    quote3_error_t qe3_ret = sgx_qe_get_quote_size(&quote_size);
++    assert(SGX_QL_SUCCESS == qe3_ret);
++
++    uint8_t* quote_buffer = (uint8_t*) calloc(1, quote_size);
++    assert(NULL != quote_buffer);
++
++    qe3_ret = sgx_qe_get_quote((sgx_report_t*) request->report.data,
++                               quote_size, quote_buffer);
++    assert(SGX_QL_SUCCESS == qe3_ret);
++    response.quote.data = quote_buffer;
++    response.quote.len  = quote_size;
++    
++    uint32_t payload_len = quoteservice__message__response__get_packed_size(&wrapper_msg);
++    uint32_t total_len = payload_len + sizeof(payload_len);
++    uint8_t buf[4096];
++    assert(total_len <= sizeof(buf));
++    memcpy(buf, (uint8_t*)&payload_len, sizeof(payload_len));
++    quoteservice__message__response__pack(&wrapper_msg, buf + sizeof(payload_len));
++
++    int rc = send(fd, buf, total_len, 0);
++    assert(rc == total_len);
++}
++
++static void accept_loop(void) {
++    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
++    assert(-1 != sockfd);
++    struct sockaddr_in srvaddr = { 0, };
++    srvaddr.sin_family = AF_INET;
++    srvaddr.sin_port = htons(12345);
++    inet_pton(AF_INET, "127.0.0.1", &srvaddr.sin_addr);
++    int ret = bind(sockfd, (struct sockaddr*)&srvaddr, sizeof(srvaddr));
++    assert(-1 != ret);
++    ret = listen(sockfd, 0);
++    assert(-1 != ret);
++
++    do {
++        struct sockaddr_in clientaddr;
++        socklen_t client_len = sizeof(clientaddr);
++        const int clientfd = accept(sockfd, (struct sockaddr*) &clientaddr, &client_len);
++        assert(-1 != clientfd);
++        // do stuff
++
++        uint32_t msglen;
++        ret = read(clientfd, &msglen, sizeof(msglen));
++        uint8_t buf[512];
++        assert(msglen <= sizeof(buf));
++        ret = read(clientfd, buf, msglen);
++        assert(ret == msglen);
++
++        Quoteservice__Message__Request* msg =
++            quoteservice__message__request__unpack(NULL, msglen, buf);
++
++        if (msg->initquoterequest) {
++            process_initquoterequest(clientfd, msg);
++        } else if (msg->getquoterequest) {
++            process_getquoterequest(clientfd, msg);
++        } else {
++            assert(0);
++        }
++        
++        close(clientfd);
++    } while (1);
++}
++
++static void print_byte_array(FILE* f, uint8_t* data, int size) {
++    for (int i = 0; i < size; ++i) {
++        fprintf(f, "%02X", data[i]);
++    }
++}
++
++int main(int argc, char* argv[])
++{
++    (void)(argc);
++    (void)(argv);
++
++    int ret = 0;
++    quote3_error_t qe3_ret = SGX_QL_SUCCESS;
++    uint32_t quote_size = 0;
++    uint8_t* p_quote_buffer = NULL;
++    sgx_target_info_t qe_target_info; 
++    sgx_report_t app_report;
++
++    accept_loop();
++    
++    printf("This step is optional: the default enclave load policy is persistent: \n");
++    printf("set the enclave load policy as persistent:");
++    qe3_ret = sgx_qe_set_enclave_load_policy(SGX_QL_PERSISTENT);
++        if(SGX_QL_SUCCESS != qe3_ret) {
++                printf("Error in set enclave load policy: 0x%04x\n", qe3_ret);
++        ret = -1;
++        goto CLEANUP;
++    }
++    printf("succeed!");
++        
++    printf("\nStep1: Call sgx_qe_get_target_info:");
++    qe3_ret = sgx_qe_get_target_info(&qe_target_info);
++    if (SGX_QL_SUCCESS != qe3_ret) {
++        printf("Error in sgx_qe_get_target_info. 0x%04x\n", qe3_ret);
++                ret = -1;
++        goto CLEANUP;
++    }
++    printf("succeed!");
++    // print_byte_array(stdout, (uint8_t*) &qe_target_info, sizeof(qe_target_info));
++    printf("\nStep2: Call create_app_report:");
++    if(true != create_app_enclave_report(qe_target_info, &app_report)) {
++        printf("\nCall to create_app_report() failed\n");
++        ret = -1;
++        goto CLEANUP;
++    }
++
++    printf("succeed!");
++    printf("\nStep3: Call sgx_qe_get_quote_size:");
++    qe3_ret = sgx_qe_get_quote_size(&quote_size);
++    if (SGX_QL_SUCCESS != qe3_ret) {
++        printf("Error in sgx_qe_get_quote_size. 0x%04x\n", qe3_ret);
++        ret = -1;
++        goto CLEANUP;
++    }
++
++    printf("succeed!");
++    p_quote_buffer = (uint8_t*)malloc(quote_size);
++    if (NULL == p_quote_buffer) {
++        printf("Couldn't allocate quote_buffer\n");
++        ret = -1;
++        goto CLEANUP;
++    }
++    memset(p_quote_buffer, 0, quote_size);
++
++    // Get the Quote
++    printf("\nStep4: Call sgx_qe_get_quote:");
++    qe3_ret = sgx_qe_get_quote(&app_report,
++        quote_size,
++        p_quote_buffer);
++    if (SGX_QL_SUCCESS != qe3_ret) {
++        printf( "Error in sgx_qe_get_quote. 0x%04x\n", qe3_ret);
++        ret = -1;
++        goto CLEANUP;
++    }
++    printf("succeed!");
++        
++    printf("\n Clean up the enclave load policy:");
++    qe3_ret = sgx_qe_cleanup_by_policy();
++    if(SGX_QL_SUCCESS != qe3_ret) {
++        printf("Error in cleanup enclave load policy: 0x%04x\n", qe3_ret);
++        ret = -1;
++        goto CLEANUP;
++    }
++    printf("succeed!\n");
++CLEANUP:
++    if (NULL != p_quote_buffer) {
++        free(p_quote_buffer);
++    }
++    return ret;
++}
+diff --git a/SampleCode/QuoteServiceSample/App/App.vcxproj b/SampleCode/QuoteServiceSample/App/App.vcxproj
+new file mode 100644
+index 0000000..bb0c3d8
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/App.vcxproj
+@@ -0,0 +1,126 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <ItemGroup Label="ProjectConfigurations">
++    <ProjectConfiguration Include="Debug|x64">
++      <Configuration>Debug</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Release|x64">
++      <Configuration>Release</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++  </ItemGroup>
++  <PropertyGroup Label="Globals">
++    <ProjectGuid>{49AE83E7-4F40-421E-A6E6-B5EC50586E3D}</ProjectGuid>
++    <Keyword>Win32Proj</Keyword>
++    <RootNamespace>App</RootNamespace>
++    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
++    <ConfigurationType>Application</ConfigurationType>
++    <UseDebugLibraries>true</UseDebugLibraries>
++    <PlatformToolset>v141</PlatformToolset>
++    <CharacterSet>Unicode</CharacterSet>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
++    <ConfigurationType>Application</ConfigurationType>
++    <UseDebugLibraries>false</UseDebugLibraries>
++    <PlatformToolset>v141</PlatformToolset>
++    <WholeProgramOptimization>true</WholeProgramOptimization>
++    <CharacterSet>Unicode</CharacterSet>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
++  <ImportGroup Label="ExtensionSettings">
++  </ImportGroup>
++  <ImportGroup Label="Shared">
++  </ImportGroup>
++  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
++  </ImportGroup>
++  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
++  </ImportGroup>
++  <PropertyGroup Label="UserMacros" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <LinkIncremental>true</LinkIncremental>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <LinkIncremental>false</LinkIncremental>
++  </PropertyGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <ClCompile>
++      <PrecompiledHeader>NotUsing</PrecompiledHeader>
++      <WarningLevel>Level4</WarningLevel>
++      <Optimization>Disabled</Optimization>
++      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <SDLCheck>true</SDLCheck>
++      <AdditionalIncludeDirectories>$(SGXDCAPComponentsPath)\Header Files;$(SGXSDKInstallPath)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <TreatWarningAsError>true</TreatWarningAsError>
++      <ControlFlowGuard>Guard</ControlFlowGuard>
++      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
++    </ClCompile>
++    <Link>
++      <SubSystem>Console</SubSystem>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
++      <AdditionalLibraryDirectories>$(SGXDCAPComponentsPath)\lib\native\Debug Support;$(SGXSDKInstallPath)bin\x64\Release</AdditionalLibraryDirectories>
++      <AdditionalDependencies>sgx_dcap_ql.lib;sgx_urts.lib;%(AdditionalDependencies)</AdditionalDependencies>
++      <ShowProgress>NotSet</ShowProgress>
++    </Link>
++    <PostBuildEvent>
++      <Command>
++      </Command>
++    </PostBuildEvent>
++    <ProjectReference>
++      <LinkLibraryDependencies>Yes\</LinkLibraryDependencies>
++    </ProjectReference>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <ClCompile>
++      <WarningLevel>Level4</WarningLevel>
++      <PrecompiledHeader>NotUsing</PrecompiledHeader>
++      <Optimization>MaxSpeed</Optimization>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++      <IntrinsicFunctions>true</IntrinsicFunctions>
++      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <SDLCheck>true</SDLCheck>
++      <AdditionalIncludeDirectories>$(SGXDCAPComponentsPath)\Header Files;$(SGXSDKInstallPath)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <ControlFlowGuard>Guard</ControlFlowGuard>
++      <TreatWarningAsError>true</TreatWarningAsError>
++    </ClCompile>
++    <Link>
++      <SubSystem>Console</SubSystem>
++      <EnableCOMDATFolding>true</EnableCOMDATFolding>
++      <OptimizeReferences>true</OptimizeReferences>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
++      <AdditionalLibraryDirectories>$(SGXDCAPComponentsPath)\lib\native\Libraries;$(SGXSDKInstallPath)bin\x64\Release</AdditionalLibraryDirectories>
++      <AdditionalDependencies>sgx_dcap_ql.lib;sgx_urts.lib;%(AdditionalDependencies)</AdditionalDependencies>
++    </Link>
++    <PostBuildEvent>
++      <Command>
++      </Command>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemGroup>
++    <ClCompile Include="App.cpp" />
++    <ClCompile Include="Enclave_u.c" />
++  </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="Enclave_u.h" />
++  </ItemGroup>
++  <ItemGroup>
++    <CustomBuild Include="..\Enclave\Enclave.edl">
++      <FileType>Document</FileType>
++      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(SGXSDKInstallPath)\bin\win32\Release\sgx_edger8r.exe" --untrusted ".\..\Enclave\Enclave.edl" --search-path "$(SGXSDKInstallPath)\include%3b.\..\Enclave"
++</Command>
++      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Creating untrusted proxy/bridge routines</Message>
++      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)%(Filename)_u.h;$(ProjectDir)%(Filename)_u.c;%(Outputs)</Outputs>
++      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(SGXSDKInstallPath)\bin\win32\Release\sgx_edger8r.exe" --untrusted ".\..\Enclave\Enclave.edl" --search-path "$(SGXSDKInstallPath)\include%3b.\..\Enclave"</Command>
++      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Creating untrusted proxy/bridge routines</Message>
++      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(ProjectDir)%(Filename)_u.h;$(ProjectDir)%(Filename)_u.c;%(Outputs)</Outputs>
++    </CustomBuild>
++  </ItemGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
++  <ImportGroup Label="ExtensionTargets">
++  </ImportGroup>
++</Project>
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/App/App.vcxproj.filters b/SampleCode/QuoteServiceSample/App/App.vcxproj.filters
+new file mode 100644
+index 0000000..59ae60a
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/App.vcxproj.filters
+@@ -0,0 +1,33 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <ItemGroup>
++    <Filter Include="Source Files">
++      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
++      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
++    </Filter>
++    <Filter Include="Header Files">
++      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
++      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
++    </Filter>
++    <Filter Include="Resource Files">
++      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
++      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
++    </Filter>
++  </ItemGroup>
++  <ItemGroup>
++    <ClCompile Include="App.cpp">
++      <Filter>Source Files</Filter>
++    </ClCompile>
++    <ClCompile Include="Enclave_u.c">
++      <Filter>Source Files</Filter>
++    </ClCompile>
++  </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="Enclave_u.h">
++      <Filter>Header Files</Filter>
++    </ClInclude>
++  </ItemGroup>
++  <ItemGroup>
++    <CustomBuild Include="..\Enclave\Enclave.edl" />
++  </ItemGroup>
++</Project>
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/App/App.vcxproj.user b/SampleCode/QuoteServiceSample/App/App.vcxproj.user
+new file mode 100644
+index 0000000..1e74340
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/App.vcxproj.user
+@@ -0,0 +1,11 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
++    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
++    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
++  </PropertyGroup>
++</Project>
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/App/ecdsa-aesmd-messages.proto b/SampleCode/QuoteServiceSample/App/ecdsa-aesmd-messages.proto
+new file mode 100644
+index 0000000..dbf8374
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/ecdsa-aesmd-messages.proto
+@@ -0,0 +1,25 @@
++package quoteservice.message;
++
++message Request {
++  message InitQuoteRequest {
++  }
++  message GetQuoteRequest {
++    required bytes report = 1;
++  }
++  optional InitQuoteRequest initQuoteRequest = 1;
++  optional GetQuoteRequest  getQuoteRequest  = 2;
++}
++
++message Response {
++  message InitQuoteResponse {
++    required uint32 errorCode = 1 [default = 1];
++    optional bytes targetInfo = 2;
++    required uint32 quote_size = 3;
++  }
++  message GetQuoteResponse {
++    required uint32 errorCode = 1 [default = 1];
++    optional bytes  quote     = 2;
++  }
++  optional InitQuoteResponse initQuoteResponse = 1;
++  optional GetQuoteResponse  getQuoteResponse  = 2;
++}
+diff --git a/SampleCode/QuoteServiceSample/App/messages.proto~ b/SampleCode/QuoteServiceSample/App/messages.proto~
+new file mode 100644
+index 0000000..8ca5077
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/App/messages.proto~
+@@ -0,0 +1,24 @@
++package quoteservice.message;
++
++message Request {
++  message InitQuoteRequest {
++  }
++  message GetQuoteRequest {
++    required bytes report = 1;
++  }
++  optional InitQuoteRequest initQuoteRequest = 1;
++  optional GetQuoteRequest  getQuoteRequest  = 2;
++}
++
++message Response {
++  message InitQuoteResponse {
++    required uint32 errorCode = 1 [default = 1];
++    optional bytes targetInfo = 2;
++  }
++  message GetQuoteResponse {
++    required uint32 errorCode = 1 [default = 1];
++    optional bytes  quote     = 2;
++  }
++  optional InitQuoteResponse initQuoteResponse = 1;
++  optional GetQuoteResponse  getQuoteResponse  = 2;
++}
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.config.xml b/SampleCode/QuoteServiceSample/Enclave/Enclave.config.xml
+new file mode 100644
+index 0000000..89a7ab5
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.config.xml
+@@ -0,0 +1,11 @@
++<EnclaveConfiguration> 
++  <ProdID>0</ProdID> 
++  <ISVSVN>0</ISVSVN> 
++  <StackMaxSize>0x40000</StackMaxSize> 
++  <HeapMaxSize>0x100000</HeapMaxSize> 
++  <TCSNum>1</TCSNum> 
++  <TCSPolicy>1</TCSPolicy> 
++  <DisableDebug>0</DisableDebug>
++  <MiscSelect>0</MiscSelect>
++  <MiscMask>0xFFFFFFFF</MiscMask>
++</EnclaveConfiguration>
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.cpp b/SampleCode/QuoteServiceSample/Enclave/Enclave.cpp
+new file mode 100644
+index 0000000..4b8714a
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.cpp
+@@ -0,0 +1,51 @@
++/*
++ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above copyright
++ *     notice, this list of conditions and the following disclaimer in
++ *     the documentation and/or other materials provided with the
++ *     distribution.
++ *   * Neither the name of Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++
++
++#include "Enclave_t.h"
++
++#include "sgx_trts.h"
++#include "sgx_error.h"
++#include "sgx_report.h"
++#include "sgx_utils.h"
++
++
++uint32_t enclave_create_report(const sgx_target_info_t* p_qe3_target, sgx_report_t* p_report)
++{
++    sgx_report_data_t report_data = { 0 };
++
++    // Generate the report for the app_enclave
++    sgx_status_t  sgx_error = sgx_create_report(p_qe3_target, &report_data, p_report);
++
++    return sgx_error;
++}
++
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.edl b/SampleCode/QuoteServiceSample/Enclave/Enclave.edl
+new file mode 100644
+index 0000000..af067c5
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.edl
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ *
++ *   * Redistributions of source code must retain the above copyright
++ *     notice, this list of conditions and the following disclaimer.
++ *   * Redistributions in binary form must reproduce the above copyright
++ *     notice, this list of conditions and the following disclaimer in
++ *     the documentation and/or other materials provided with the
++ *     distribution.
++ *   * Neither the name of Intel Corporation nor the names of its
++ *     contributors may be used to endorse or promote products derived
++ *     from this software without specific prior written permission.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ */
++
++
++
++enclave {
++    include "sgx_report.h"
++
++    trusted {
++        /* define ECALLs here. */
++        public uint32_t enclave_create_report([in]const sgx_target_info_t* p_qe3_target,
++                                              [out]sgx_report_t* p_report);
++
++    };
++};
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.lds b/SampleCode/QuoteServiceSample/Enclave/Enclave.lds
+new file mode 100644
+index 0000000..3ad67dd
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.lds
+@@ -0,0 +1,11 @@
++Enclave.so
++{
++    global:
++        g_global_data_sim;
++        g_global_data;
++        enclave_entry;
++        g_peak_heap_used;
++    local:
++        *;
++};
++
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj b/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj
+new file mode 100644
+index 0000000..b24ef69
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj
+@@ -0,0 +1,203 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <ItemGroup Label="ProjectConfigurations">
++    <ProjectConfiguration Include="Debug|x64">
++      <Configuration>Debug</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Prerelease|x64">
++      <Configuration>Prerelease</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Release|x64">
++      <Configuration>Release</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++    <ProjectConfiguration Include="Simulation|x64">
++      <Configuration>Simulation</Configuration>
++      <Platform>x64</Platform>
++    </ProjectConfiguration>
++  </ItemGroup>
++  <PropertyGroup Label="Globals">
++    <ProjectGuid>{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}</ProjectGuid>
++    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
++    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v141</PlatformToolset>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v141</PlatformToolset>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v140</PlatformToolset>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v141</PlatformToolset>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'" Label="Configuration">
++    <ConfigurationType>DynamicLibrary</ConfigurationType>
++    <PlatformToolset>v141</PlatformToolset>
++  </PropertyGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
++  <ImportGroup Label="ExtensionSettings">
++  </ImportGroup>
++  <PropertyGroup Label="UserMacros" />
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <GenerateManifest>false</GenerateManifest>
++    <LinkIncremental>false</LinkIncremental>
++    <IncludePath>$(NoInherit)</IncludePath>
++    <LibraryPath>$(NoInherit)</LibraryPath>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'">
++    <GenerateManifest>false</GenerateManifest>
++    <LinkIncremental>false</LinkIncremental>
++    <IncludePath>$(NoInherit)</IncludePath>
++    <LibraryPath>$(NoInherit)</LibraryPath>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <GenerateManifest>false</GenerateManifest>
++    <LinkIncremental>false</LinkIncremental>
++    <IncludePath>$(NoInherit)</IncludePath>
++    <LibraryPath>$(NoInherit)</LibraryPath>
++  </PropertyGroup>
++  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'">
++    <GenerateManifest>false</GenerateManifest>
++    <LinkIncremental>false</LinkIncremental>
++    <IncludePath>$(NoInherit)</IncludePath>
++    <LibraryPath>$(NoInherit)</LibraryPath>
++  </PropertyGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
++    <ClCompile>
++      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
++      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
++      <Optimization>Disabled</Optimization>
++      <WarningLevel>Level3</WarningLevel>
++      <AdditionalIncludeDirectories>$(SGXSDKInstallPath)include;$(SGXSDKInstallPath)include\tlibc;$(SGXSDKInstallPath)include\libc++;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++    </ClCompile>
++    <Link>
++      <AdditionalDependencies>sgx_trts.lib;sgx_tstdc.lib;sgx_tservice.lib;sgx_tcrypto.lib;sgx_tcxx.lib</AdditionalDependencies>
++      <AdditionalLibraryDirectories>$(SGXSDKInstallPath)bin\$(Platform)\$(Configuration)</AdditionalLibraryDirectories>
++      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
++      <EntryPointSymbol />
++      <NoEntryPoint>true</NoEntryPoint>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
++    </Link>
++    <PostBuildEvent>
++      <Command>"$(SGXSDKInstallPath)bin\win32\release\sgx_sign.exe" sign -key "$(ProjectDir)Enclave_private.pem" -enclave "$(OutDir)Enclave.dll" -out "$(OutDir)Enclave.signed.dll" -config "$(ProjectDir)Enclave.config.xml"</Command>
++      <Message>sign the enclave</Message>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'">
++    <ClCompile>
++      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
++      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
++      <Optimization>Disabled</Optimization>
++      <WarningLevel>Level3</WarningLevel>
++      <AdditionalIncludeDirectories>$(SGXSDKInstallPath)include;$(SGXSDKInstallPath)include\tlibc;$(SGXSDKInstallPath)include\libc++;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++    </ClCompile>
++    <Link>
++      <AdditionalDependencies>sgx_trts_sim.lib;sgx_tstdc.lib;sgx_tservice_sim.lib;sgx_tcrypto.lib;sgx_tcxx.lib</AdditionalDependencies>
++      <AdditionalLibraryDirectories>$(SGXSDKInstallPath)bin\$(Platform)\Debug</AdditionalLibraryDirectories>
++      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
++      <EntryPointSymbol>
++      </EntryPointSymbol>
++      <NoEntryPoint>true</NoEntryPoint>
++      <GenerateDebugInformation>true</GenerateDebugInformation>
++    </Link>
++    <PostBuildEvent>
++      <Command>"$(SGXSDKInstallPath)bin\win32\release\sgx_sign.exe" sign -key "$(ProjectDir)Enclave_private.pem" -enclave "$(OutDir)Enclave.dll" -out "$(OutDir)Enclave.signed.dll" -config "$(ProjectDir)Enclave.config.xml"</Command>
++      <Message>sign the enclave</Message>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
++    <ClCompile>
++      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
++      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
++      <Optimization>MaxSpeed</Optimization>
++      <WarningLevel>Level3</WarningLevel>
++      <AdditionalIncludeDirectories>$(SGXSDKInstallPath)include;$(SGXSDKInstallPath)include\tlibc;$(SGXSDKInstallPath)include\libc++;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++    </ClCompile>
++    <Link>
++      <AdditionalDependencies>sgx_trts.lib;sgx_tstdc.lib;sgx_tservice.lib;sgx_tcrypto.lib;sgx_tcxx.lib</AdditionalDependencies>
++      <AdditionalLibraryDirectories>$(SGXSDKInstallPath)bin\$(Platform)\$(Configuration)</AdditionalLibraryDirectories>
++      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
++      <EntryPointSymbol />
++      <NoEntryPoint>true</NoEntryPoint>
++      <OptimizeReferences>true</OptimizeReferences>
++      <EnableCOMDATFolding>true</EnableCOMDATFolding>
++    </Link>
++    <PostBuildEvent>
++      <Command>"$(SGXSDKInstallPath)bin\win32\release\sgx_sign.exe" sign -key "$(ProjectDir)Enclave_private.pem" -enclave "$(OutDir)Enclave.dll" -out "$(OutDir)Enclave.signed.dll" -config "$(ProjectDir)Enclave.config.xml"</Command>
++      <Message>signing the enclave</Message>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'">
++    <ClCompile>
++      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
++      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
++      <Optimization>MaxSpeed</Optimization>
++      <WarningLevel>Level3</WarningLevel>
++      <AdditionalIncludeDirectories>$(SGXSDKInstallPath)include;$(SGXSDKInstallPath)include\tlibc;$(SGXSDKInstallPath)include\libc++;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
++      <FunctionLevelLinking>true</FunctionLevelLinking>
++    </ClCompile>
++    <Link>
++      <AdditionalDependencies>sgx_trts.lib;sgx_tstdc.lib;sgx_tservice.lib;sgx_tcrypto.lib;sgx_tcxx.lib</AdditionalDependencies>
++      <AdditionalLibraryDirectories>$(SGXSDKInstallPath)bin\$(Platform)\Release</AdditionalLibraryDirectories>
++      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
++      <EntryPointSymbol>
++      </EntryPointSymbol>
++      <NoEntryPoint>true</NoEntryPoint>
++      <OptimizeReferences>true</OptimizeReferences>
++      <EnableCOMDATFolding>true</EnableCOMDATFolding>
++    </Link>
++    <PostBuildEvent>
++      <Command>"$(SGXSDKInstallPath)bin\win32\release\sgx_sign.exe" sign -key "$(ProjectDir)Enclave_private.pem" -enclave "$(OutDir)Enclave.dll" -out "$(OutDir)Enclave.signed.dll" -config "$(ProjectDir)Enclave.config.xml"</Command>
++      <Message>sign the enclave</Message>
++    </PostBuildEvent>
++  </ItemDefinitionGroup>
++  <ItemGroup>
++    <ClCompile Include="Enclave.cpp" />
++    <ClCompile Include="Enclave_t.c" />
++  </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="Enclave_t.h" />
++  </ItemGroup>
++  <ItemGroup>
++    <CustomBuild Include="Enclave.edl">
++      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">"$(SGXSDKInstallPath)bin\win32\release\sgx_edger8r.exe" --trusted "%(FullPath)" --search-path "$(SGXSDKInstallPath)include"</Command>
++      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Creating proxy/bridge routines</Message>
++      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">%(Filename)_t.h;%(Filename)_t.c;%(Outputs)</Outputs>
++      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Enclave.config.xml;%(AdditionalInputs)</AdditionalInputs>
++      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">"$(SGXSDKInstallPath)bin\win32\release\sgx_edger8r.exe" --trusted "%(FullPath)" --search-path "$(SGXSDKInstallPath)include"</Command>
++      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Creating proxy/bridge routines</Message>
++      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(Filename)_t.h;%(Filename)_t.c;%(Outputs)</Outputs>
++      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Enclave.config.xml;%(AdditionalInputs)</AdditionalInputs>
++      <Command Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'">"$(SGXSDKInstallPath)bin\win32\release\sgx_edger8r.exe" --trusted "%(FullPath)" --search-path "$(SGXSDKInstallPath)include"</Command>
++      <Message Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'">Creating proxy/bridge routines</Message>
++      <Outputs Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'">%(Filename)_t.h;%(Filename)_t.c;%(Outputs)</Outputs>
++      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Simulation|x64'">Enclave.config.xml;%(AdditionalInputs)</AdditionalInputs>
++      <Command Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'">"$(SGXSDKInstallPath)bin\win32\release\sgx_edger8r.exe" --trusted "%(FullPath)" --search-path "$(SGXSDKInstallPath)include"</Command>
++      <Message Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'">Creating proxy/bridge routines</Message>
++      <Outputs Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'">%(Filename)_t.h;%(Filename)_t.c;%(Outputs)</Outputs>
++      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Prerelease|x64'">Enclave.config.xml;%(AdditionalInputs)</AdditionalInputs>
++    </CustomBuild>
++    <None Include="Enclave_private.pem" />
++  </ItemGroup>
++  <ItemGroup>
++    <Xml Include="Enclave.config.xml" />
++  </ItemGroup>
++  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
++  <ImportGroup Label="ExtensionTargets">
++  </ImportGroup>
++</Project>
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj.filters b/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj.filters
+new file mode 100644
+index 0000000..0c79bc1
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj.filters
+@@ -0,0 +1,48 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <ItemGroup>
++    <Filter Include="Generated Files">
++      <UniqueIdentifier>{7de549e2-668c-4e61-829a-2d67536bcd9a}</UniqueIdentifier>
++    </Filter>
++    <Filter Include="Source Files">
++      <UniqueIdentifier>{585a988c-e284-4b45-85d2-230dd3f0c300}</UniqueIdentifier>
++      <Extensions>cpp;c;edl;def;</Extensions>
++    </Filter>
++    <Filter Include="Header Files">
++      <UniqueIdentifier>{4d8dd695-f1ce-4406-acbd-7ecc83546a99}</UniqueIdentifier>
++      <Extensions>h;hpp;</Extensions>
++    </Filter>
++    <Filter Include="Resource Files">
++      <UniqueIdentifier>{301fb2fb-5ce6-478c-b616-a2d1c021ace7}</UniqueIdentifier>
++      <Extensions>rc;xml;pem;</Extensions>
++    </Filter>
++  </ItemGroup>
++  <ItemGroup>
++    <ClCompile Include="Enclave_t.c">
++      <Filter>Generated Files</Filter>
++    </ClCompile>
++    <ClCompile Include="Enclave.cpp">
++      <Filter>Source Files</Filter>
++    </ClCompile>
++  </ItemGroup>
++  <ItemGroup>
++    <ClInclude Include="Enclave_t.h">
++      <Filter>Generated Files</Filter>
++    </ClInclude>
++  </ItemGroup>
++  <ItemGroup>
++    <None Include="Enclave_private.pem">
++      <Filter>Resource Files</Filter>
++    </None>
++  </ItemGroup>
++  <ItemGroup>
++    <Xml Include="Enclave.config.xml">
++      <Filter>Resource Files</Filter>
++    </Xml>
++  </ItemGroup>
++  <ItemGroup>
++    <CustomBuild Include="Enclave.edl">
++      <Filter>Source Files</Filter>
++    </CustomBuild>
++  </ItemGroup>
++</Project>
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj.user b/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj.user
+new file mode 100644
+index 0000000..6fb136b
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave.vcxproj.user
+@@ -0,0 +1,4 @@
++﻿<?xml version="1.0" encoding="utf-8"?>
++<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
++  <PropertyGroup />
++</Project>
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/Enclave/Enclave_private.pem b/SampleCode/QuoteServiceSample/Enclave/Enclave_private.pem
+new file mode 100644
+index 0000000..056e43b
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Enclave/Enclave_private.pem
+@@ -0,0 +1,39 @@
++-----BEGIN RSA PRIVATE KEY-----
++MIIG4QIBAAKCAYEAkj+OHOD9NYg+GFWalesDTpViDG21caYJuQtSqiebsbZsHvn8
++ErP3zfOTwIkBJkUNxHc4CBJe8UFB1Bke/q86eL2Cfwy50PrGxf0tmENFklRGFaFb
++tyCsZYoJiOuRG9UxUj01NBYDy6cCi9s7UUyMrwPHxgRV4KtnhNmg0f2rCxXUkhx4
++m/jYZATj7b42DYxrb0iV8Z/WQ85KTyQlh43b3rJRZLvffsil5NqKMJJ9DK7xmzq8
++Ymns3rvqhJUUHvk4Ptj75yfZrNUNKJVf6eGs7514hRAuecNwBuA574vAlIJ3kAWB
++UicVWUOSkTNMDHKyRUn077f2bJHnmu3EWUATw21gcLN2XP1p7tBglZejAJYYipYK
++CQ19q542gIpZR5nMdKatGINPBB0yEV/TPKBV4rO4E2t659oaH6BR/VuNPDb/LdG0
++/dsItCZwUPM16dEVE+nVPG8uy1HNPbkapU5moEs6+QOOz3ERSuBVnsP0PsC6MdMx
++MI+rtREVayZ2mj61AgEDAoIBgGF/tBNAqM5a1BA5EblHV4m47AhJI6EZW9CyNxwa
++Z8vO8r9RUrcipTP3t9Wwq27Ys9hPerAMP0uA1o1mFKnKJvspAaoIe+CnLy6oyRAs
++2Qw4LrkWPSTAcu5cBltHthKOIOF+I3gOrTJvVwfnfODdsx9X2oQC4+sc763mazap
++HLIOjba9pb1QkEKt7UkpeV5dnPTbDqEVOYKJht9tblpekpR24O3SlP8wbpiRsXW2
++/gh0oRInKEGb8z8n8a24uBSmJHk7XF7aC/0k8ZOc4ONCA+yPZAB9+oehtjg3Ydke
++/O00bTSUiDQtq+ZDXT12LLJnMw870HjWRG4rDQsVR99HfnaH5iW02HHfRpi2zzqn
++pNlr9bjJIJIl7Pv4wigWtJRA7RwyGfQiar8xmDL8VBPYgAzjysWOCJw3FBfMBllN
++bEsrMi8r9qq7/2MBk3rjsD67KRF+Z41yb44md3Pz+9I12+zwjU1tyWquEpu/PDa0
++Hl4u7yD25ap89+Z75tSURq6hKwKBwQCiQYJ2ViroJYYbsfKd37lMwV3at+pjStM1
++oQGrHBRgzlVji+rSkYAfFnjs++931JF68Yn1YYZ0TgLiLygcE+AZJXzaK1e+q0vH
++FWyHQ6yRvaTEEbXMjVp9wz9U0vHc4Yap9eBhEfAYs+r1t20L1rNuTc+oQrN3Qz3l
++11/M2wLcwlOz8Zc6SEUUsRBo5+uU6hjRcktaDffSvVOiY/uBN1QvmqO87kSOKXdB
++ZddK0tatPXD7q7uDlXPi3KcSWRJgBnECgcEA5r5u4oqcyPgcr3gb9x7twAUEqZtM
++SwYLfOwlfsEwz+V+XZrKMVETYMgNyAYZiQNUM36yRRUJUwNRKB6wbkD1+HwKXfjZ
++84M0Qqi9Nlh/KLaDMVajYUc/s+XT75VYjFbiIGWlyT2+zJ7izy3oEwTiYRA4QtO6
++hkQ+Fhboqoxn7rPgMx4rw3jEivMCr7XB9s4+qDnujjWPo1rGbWclaMZIjUfDR/Cc
++IUJ+H9ukAeLwBDzihLUdLT7D+HqUGe76NEaFAoHAbCusTuQcmsOuvSFMaT/Q3dY+
++kc/xl4c3eRYBHL1i6zQ47Qfx4bZVag77SKf0+o22UfZb+Ouu+DQB7B9wErfqu25T
++PBzlKceH2g5IWi0dtn5t2AvOiF48U9d/jeH2k0EEcU6Vlgv1Zc1HTnpIso8iSYk1
++GtciT4IpQ+TqiJIB6IGNIqEPfDAuDctgRe/yY0a7NkwyPAlP4dONFu1SViTiymcX
++00mDCXD6K5k6MeHkc35LUnJ9AmOilz3EtuYMQARLAoHBAJnUSexcaIX6vcpQEqS/
++SSquAxu83YdZXP3yw6nWIIqY/ukR3CDgt5Xas9quu7Cs4sz/IYNjW4ys4MVpyvQr
++TqWoBulQkU0CItcbKM7lqhskV3Y5wkDaKnfujUpjkF2PQWruboYpKd2/Qd9z8Ayt
++7EC1etc30a7YKWQPRccIRUnNQCIUHSz7LbH3Vx/OgU80KcV79F7OX8I8hEjvbkXZ
++hbOFLNqgaBYsVBU9GAFB9VgolwMjaMjUgqWnDWafUXgvAwKBwFadxA0Nle+f6Q12
++vbxbPQ22BJfWM/+GuABaRDr2NR4BsvqgaU+c3LCYr1rv2GhGVoOOvvuAKJS4XJ8Z
++FvsVnjPJfFfHZRisOdUDqif3Op1MUclqiWzkIPyP7388YVBDrtp1KrikIiXPojyx
++PEJMeOpxqbNiiMCjhp0/NQ9umC15aNT9N0AsEwhV1HssARW587JC3heOCA2AInD0
++0miY3le4fHmF+H4gTKqiNbTGPnCp+D4h7mEgysJZUbSZcYZveA==
++-----END RSA PRIVATE KEY-----
+\ No newline at end of file
+diff --git a/SampleCode/QuoteServiceSample/Makefile b/SampleCode/QuoteServiceSample/Makefile
+new file mode 100644
+index 0000000..cb8a68d
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Makefile
+@@ -0,0 +1,200 @@
++#
++# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
++#
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions
++# are met:
++#
++#   * Redistributions of source code must retain the above copyright
++#     notice, this list of conditions and the following disclaimer.
++#   * Redistributions in binary form must reproduce the above copyright
++#     notice, this list of conditions and the following disclaimer in
++#     the documentation and/or other materials provided with the
++#     distribution.
++#   * Neither the name of Intel Corporation nor the names of its
++#     contributors may be used to endorse or promote products derived
++#     from this software without specific prior written permission.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
++#
++
++######## SGX SDK Settings ########
++DEBUG ?= 0
++
++SGX_SDK ?= /opt/intel/sgxsdk
++SGX_MODE ?= HW
++SGX_ARCH ?= x64
++
++SGX_COMMON_CFLAGS := -m64
++SGX_LIBRARY_PATH := $(SGX_SDK)/lib64
++SGX_ENCLAVE_SIGNER := $(SGX_SDK)/bin/x64/sgx_sign
++SGX_EDGER8R := $(SGX_SDK)/bin/x64/sgx_edger8r
++
++
++ifeq ($(DEBUG), 1)
++        SGX_COMMON_CFLAGS += -O0 -g
++else
++        SGX_COMMON_CFLAGS += -O2
++endif
++
++######## App Settings ########
++
++DCAP_Library_Name := sgx_dcap_ql
++Urts_Library_Name := sgx_urts
++
++App_Cpp_Files :=  App/App.cpp
++App_Include_Paths := -I$(SGX_SDK)/include -I.
++
++App_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes $(App_Include_Paths)
++
++# Two configuration modes - Debug, Release
++#   Debug - Macro DEBUG enabled.
++#   Release - Macro NDEBUG enabled.
++ifeq ($(DEBUG), 1)
++        App_C_Flags += -DDEBUG -UNDEBUG -UEDEBUG
++else
++        App_C_Flags += -DNDEBUG -UEDEBUG -UDEBUG
++endif
++
++
++App_Cpp_Flags := $(App_C_Flags) -std=c++11
++App_Link_Flags := $(SGX_COMMON_CFLAGS) -l$(DCAP_Library_Name) -l$(Urts_Library_Name) -ldl -lpthread -lprotobuf-c
++
++
++App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
++
++App_Name := app
++
++######## Enclave Settings ########
++Trts_Library_Name := sgx_trts
++Service_Library_Name := sgx_tservice
++Crypto_Library_Name := sgx_tcrypto
++
++Enclave_Cpp_Files := Enclave/Enclave.cpp
++Enclave_Include_Paths := -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
++
++CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
++ifeq ($(CC_BELOW_4_9), 1)
++        Enclave_C_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector
++else
++        Enclave_C_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector-strong
++endif
++Enclave_C_Flags += $(Enclave_Include_Paths)
++Enclave_Cpp_Flags := $(Enclave_C_Flags) -std=c++11 -nostdinc++
++
++# To generate a proper enclave, it is recommended to follow below guideline to link the trusted libraries:
++#    1. Link sgx_trts with the `--whole-archive' and `--no-whole-archive' options,
++#       so that the whole content of trts is included in the enclave.
++#    2. For other libraries, you just need to pull the required symbols.
++#       Use `--start-group' and `--end-group' to link these libraries.
++# Do NOT move the libraries linked with `--start-group' and `--end-group' within `--whole-archive' and `--no-whole-archive' options.
++# Otherwise, you may get some undesirable errors.
++Enclave_Link_Flags := $(SGX_COMMON_CFLAGS) -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
++        -Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
++        -Wl,--start-group -lsgx_tstdc -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
++        -Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
++        -Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
++        -Wl,--defsym,__ImageBase=0 -Wl,--gc-sections   \
++        -Wl,-z,relro,-z,now,-z,noexecstack             \
++        -Wl,--version-script=Enclave/Enclave.lds
++
++Enclave_Cpp_Objects := $(Enclave_Cpp_Files:.cpp=.o)
++ENCLAVE_LIBRARY_PATH := Enclave/
++
++
++Enclave_Name := enclave.so
++Signed_Enclave_Name := enclave.signed.so
++Enclave_Config_File := Enclave/Enclave.config.xml
++
++ifeq ($(DEBUG), 1)
++        Build_Mode = HW_DEBUG
++else
++        Build_Mode = HW_RELEASE
++endif
++
++
++.PHONY: all target run
++
++all: .config_$(Build_Mode)_$(SGX_ARCH)
++	$(MAKE) target
++
++target: $(App_Name) $(Signed_Enclave_Name)
++ifeq ($(Build_Mode), HW_RELEASE)
++	@echo "The project has been built in release hardware mode."
++else
++	@echo "The project has been built in debug hardware mode."
++endif
++
++run: all
++ifneq ($(Build_Mode), HW_RELEASE)
++	@$(CURDIR)/$(App_Name)
++	@echo "RUN  =>  $(App_Name) [$(SGX_MODE)|$(SGX_ARCH), OK]"
++endif
++
++
++.config_$(Build_Mode)_$(SGX_ARCH):
++	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
++	@touch .config_$(Build_Mode)_$(SGX_ARCH)
++
++######## App Objects ########
++App/Enclave_u.c:
++	cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl
++	@echo "GEN  =>  $@"
++
++App/%.o: App/%.c
++	@$(CC) $(App_C_Flags) -c $< -o $@
++	@echo "CC   <=  $<"
++
++$(App_Cpp_Objects): App/Enclave_u.c
++App/%.o: App/%.cpp
++	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
++	@echo "CXX  <=  $<"
++
++$(App_Name): App/Enclave_u.o $(App_Cpp_Objects) App/ecdsa-aesmd-messages.pb-c.o
++	$(CXX) $^ -o $@ $(App_Link_Flags)
++	@echo "LINK =>  $@"
++
++App/App.cpp: App/ecdsa-aesmd-messages.pb-c.c
++
++App/ecdsa-aesmd-messages.pb-c.c: App/ecdsa-aesmd-messages.proto
++	protoc-c $^ --c_out=.
++
++######## Enclave Objects ########
++Enclave/Enclave_t.c:
++	@cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl
++	@echo "GEN  =>  $@"
++
++Enclave/Enclave_t.o: Enclave/Enclave_t.c
++	@$(CC) $(Enclave_C_Flags) -c $< -o $@
++	@echo "CC   <=  $<"
++
++$(Enclave_Cpp_Objects): Enclave/Enclave_t.c
++Enclave/%.o: Enclave/%.cpp
++	@$(CXX) $(Enclave_Cpp_Flags) -c $< -o $@
++	@echo "CXX  <=  $<"
++
++$(Enclave_Name): Enclave/Enclave_t.o $(Enclave_Cpp_Objects)
++	@$(CXX) $^ -o $@ $(Enclave_Link_Flags)
++	@echo "LINK =>  $@"
++
++$(Signed_Enclave_Name): $(Enclave_Name)
++	@$(SGX_ENCLAVE_SIGNER) sign -key Enclave/Enclave_private.pem -enclave $(Enclave_Name) -out $@ -config $(Enclave_Config_File)
++	@rm -f $(Enclave_Name)
++	@echo "SIGN =>  $@"
++
++.PHONY: clean
++clean:
++	@rm -f App/ecdsa-aesmd-messages.pb-c.c App/ecdsa-aesmd-messages.pb-c.h
++	@rm -f  $(App_Name)  App/*.o App/Enclave_u.* .config_*  
++	@rm -f  $(Enclave_Name) $(Signed_Enclave_Name) $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
+diff --git a/SampleCode/QuoteServiceSample/Makefile~ b/SampleCode/QuoteServiceSample/Makefile~
+new file mode 100644
+index 0000000..cb8a68d
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/Makefile~
+@@ -0,0 +1,200 @@
++#
++# Copyright (C) 2011-2018 Intel Corporation. All rights reserved.
++#
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions
++# are met:
++#
++#   * Redistributions of source code must retain the above copyright
++#     notice, this list of conditions and the following disclaimer.
++#   * Redistributions in binary form must reproduce the above copyright
++#     notice, this list of conditions and the following disclaimer in
++#     the documentation and/or other materials provided with the
++#     distribution.
++#   * Neither the name of Intel Corporation nor the names of its
++#     contributors may be used to endorse or promote products derived
++#     from this software without specific prior written permission.
++#
++# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++#
++#
++
++######## SGX SDK Settings ########
++DEBUG ?= 0
++
++SGX_SDK ?= /opt/intel/sgxsdk
++SGX_MODE ?= HW
++SGX_ARCH ?= x64
++
++SGX_COMMON_CFLAGS := -m64
++SGX_LIBRARY_PATH := $(SGX_SDK)/lib64
++SGX_ENCLAVE_SIGNER := $(SGX_SDK)/bin/x64/sgx_sign
++SGX_EDGER8R := $(SGX_SDK)/bin/x64/sgx_edger8r
++
++
++ifeq ($(DEBUG), 1)
++        SGX_COMMON_CFLAGS += -O0 -g
++else
++        SGX_COMMON_CFLAGS += -O2
++endif
++
++######## App Settings ########
++
++DCAP_Library_Name := sgx_dcap_ql
++Urts_Library_Name := sgx_urts
++
++App_Cpp_Files :=  App/App.cpp
++App_Include_Paths := -I$(SGX_SDK)/include -I.
++
++App_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes $(App_Include_Paths)
++
++# Two configuration modes - Debug, Release
++#   Debug - Macro DEBUG enabled.
++#   Release - Macro NDEBUG enabled.
++ifeq ($(DEBUG), 1)
++        App_C_Flags += -DDEBUG -UNDEBUG -UEDEBUG
++else
++        App_C_Flags += -DNDEBUG -UEDEBUG -UDEBUG
++endif
++
++
++App_Cpp_Flags := $(App_C_Flags) -std=c++11
++App_Link_Flags := $(SGX_COMMON_CFLAGS) -l$(DCAP_Library_Name) -l$(Urts_Library_Name) -ldl -lpthread -lprotobuf-c
++
++
++App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
++
++App_Name := app
++
++######## Enclave Settings ########
++Trts_Library_Name := sgx_trts
++Service_Library_Name := sgx_tservice
++Crypto_Library_Name := sgx_tcrypto
++
++Enclave_Cpp_Files := Enclave/Enclave.cpp
++Enclave_Include_Paths := -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
++
++CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
++ifeq ($(CC_BELOW_4_9), 1)
++        Enclave_C_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector
++else
++        Enclave_C_Flags := $(SGX_COMMON_CFLAGS) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector-strong
++endif
++Enclave_C_Flags += $(Enclave_Include_Paths)
++Enclave_Cpp_Flags := $(Enclave_C_Flags) -std=c++11 -nostdinc++
++
++# To generate a proper enclave, it is recommended to follow below guideline to link the trusted libraries:
++#    1. Link sgx_trts with the `--whole-archive' and `--no-whole-archive' options,
++#       so that the whole content of trts is included in the enclave.
++#    2. For other libraries, you just need to pull the required symbols.
++#       Use `--start-group' and `--end-group' to link these libraries.
++# Do NOT move the libraries linked with `--start-group' and `--end-group' within `--whole-archive' and `--no-whole-archive' options.
++# Otherwise, you may get some undesirable errors.
++Enclave_Link_Flags := $(SGX_COMMON_CFLAGS) -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
++        -Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
++        -Wl,--start-group -lsgx_tstdc -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
++        -Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
++        -Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
++        -Wl,--defsym,__ImageBase=0 -Wl,--gc-sections   \
++        -Wl,-z,relro,-z,now,-z,noexecstack             \
++        -Wl,--version-script=Enclave/Enclave.lds
++
++Enclave_Cpp_Objects := $(Enclave_Cpp_Files:.cpp=.o)
++ENCLAVE_LIBRARY_PATH := Enclave/
++
++
++Enclave_Name := enclave.so
++Signed_Enclave_Name := enclave.signed.so
++Enclave_Config_File := Enclave/Enclave.config.xml
++
++ifeq ($(DEBUG), 1)
++        Build_Mode = HW_DEBUG
++else
++        Build_Mode = HW_RELEASE
++endif
++
++
++.PHONY: all target run
++
++all: .config_$(Build_Mode)_$(SGX_ARCH)
++	$(MAKE) target
++
++target: $(App_Name) $(Signed_Enclave_Name)
++ifeq ($(Build_Mode), HW_RELEASE)
++	@echo "The project has been built in release hardware mode."
++else
++	@echo "The project has been built in debug hardware mode."
++endif
++
++run: all
++ifneq ($(Build_Mode), HW_RELEASE)
++	@$(CURDIR)/$(App_Name)
++	@echo "RUN  =>  $(App_Name) [$(SGX_MODE)|$(SGX_ARCH), OK]"
++endif
++
++
++.config_$(Build_Mode)_$(SGX_ARCH):
++	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
++	@touch .config_$(Build_Mode)_$(SGX_ARCH)
++
++######## App Objects ########
++App/Enclave_u.c:
++	cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl
++	@echo "GEN  =>  $@"
++
++App/%.o: App/%.c
++	@$(CC) $(App_C_Flags) -c $< -o $@
++	@echo "CC   <=  $<"
++
++$(App_Cpp_Objects): App/Enclave_u.c
++App/%.o: App/%.cpp
++	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
++	@echo "CXX  <=  $<"
++
++$(App_Name): App/Enclave_u.o $(App_Cpp_Objects) App/ecdsa-aesmd-messages.pb-c.o
++	$(CXX) $^ -o $@ $(App_Link_Flags)
++	@echo "LINK =>  $@"
++
++App/App.cpp: App/ecdsa-aesmd-messages.pb-c.c
++
++App/ecdsa-aesmd-messages.pb-c.c: App/ecdsa-aesmd-messages.proto
++	protoc-c $^ --c_out=.
++
++######## Enclave Objects ########
++Enclave/Enclave_t.c:
++	@cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl
++	@echo "GEN  =>  $@"
++
++Enclave/Enclave_t.o: Enclave/Enclave_t.c
++	@$(CC) $(Enclave_C_Flags) -c $< -o $@
++	@echo "CC   <=  $<"
++
++$(Enclave_Cpp_Objects): Enclave/Enclave_t.c
++Enclave/%.o: Enclave/%.cpp
++	@$(CXX) $(Enclave_Cpp_Flags) -c $< -o $@
++	@echo "CXX  <=  $<"
++
++$(Enclave_Name): Enclave/Enclave_t.o $(Enclave_Cpp_Objects)
++	@$(CXX) $^ -o $@ $(Enclave_Link_Flags)
++	@echo "LINK =>  $@"
++
++$(Signed_Enclave_Name): $(Enclave_Name)
++	@$(SGX_ENCLAVE_SIGNER) sign -key Enclave/Enclave_private.pem -enclave $(Enclave_Name) -out $@ -config $(Enclave_Config_File)
++	@rm -f $(Enclave_Name)
++	@echo "SIGN =>  $@"
++
++.PHONY: clean
++clean:
++	@rm -f App/ecdsa-aesmd-messages.pb-c.c App/ecdsa-aesmd-messages.pb-c.h
++	@rm -f  $(App_Name)  App/*.o App/Enclave_u.* .config_*  
++	@rm -f  $(Enclave_Name) $(Signed_Enclave_Name) $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
+diff --git a/SampleCode/QuoteServiceSample/QuoteGenerationSample.sln b/SampleCode/QuoteServiceSample/QuoteGenerationSample.sln
+new file mode 100644
+index 0000000..524a887
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/QuoteGenerationSample.sln
+@@ -0,0 +1,31 @@
++﻿
++Microsoft Visual Studio Solution File, Format Version 12.00
++# Visual Studio 14
++VisualStudioVersion = 14.0.25420.1
++MinimumVisualStudioVersion = 10.0.40219.1
++Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "App", "App\App.vcxproj", "{49AE83E7-4F40-421E-A6E6-B5EC50586E3D}"
++	ProjectSection(ProjectDependencies) = postProject
++		{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638} = {4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}
++	EndProjectSection
++EndProject
++Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Enclave", "Enclave\Enclave.vcxproj", "{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}"
++EndProject
++Global
++	GlobalSection(SolutionConfigurationPlatforms) = preSolution
++		Debug|x64 = Debug|x64
++		Release|x64 = Release|x64
++	EndGlobalSection
++	GlobalSection(ProjectConfigurationPlatforms) = postSolution
++		{49AE83E7-4F40-421E-A6E6-B5EC50586E3D}.Debug|x64.ActiveCfg = Debug|x64
++		{49AE83E7-4F40-421E-A6E6-B5EC50586E3D}.Debug|x64.Build.0 = Debug|x64
++		{49AE83E7-4F40-421E-A6E6-B5EC50586E3D}.Release|x64.ActiveCfg = Release|x64
++		{49AE83E7-4F40-421E-A6E6-B5EC50586E3D}.Release|x64.Build.0 = Release|x64
++		{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}.Debug|x64.ActiveCfg = Debug|x64
++		{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}.Debug|x64.Build.0 = Debug|x64
++		{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}.Release|x64.ActiveCfg = Release|x64
++		{4AEA12E8-6CD7-42DD-AC2F-1FB822B11638}.Release|x64.Build.0 = Release|x64
++	EndGlobalSection
++	GlobalSection(SolutionProperties) = preSolution
++		HideSolutionNode = FALSE
++	EndGlobalSection
++EndGlobal
+diff --git a/SampleCode/QuoteServiceSample/README.txt b/SampleCode/QuoteServiceSample/README.txt
+new file mode 100644
+index 0000000..ceac8ae
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/README.txt
+@@ -0,0 +1,5 @@
++This is a service exposing a TCP interface to the Quoting
++Enclave. This way, the DCAP Quote Generation Library does not have to
++be linked to the application. Instead, the application can talk to the
++quoting enclave over the network. Kind of a minimalistic aesmd for
++DCAP.
+diff --git a/SampleCode/QuoteServiceSample/README.txt~ b/SampleCode/QuoteServiceSample/README.txt~
+new file mode 100644
+index 0000000..65c2bbe
+--- /dev/null
++++ b/SampleCode/QuoteServiceSample/README.txt~
+@@ -0,0 +1,34 @@
++The project demonstrates:
++- How an application can use the Quote Generation APIs.
++        sgx_qe_set_enclave_load_policy
++        sgx_qe_cleanup_by_policy
++        sgx_qe_get_target_info
++        sgx_qe_get_quote_size
++        sgx_qe_get_quote
++
++------------------------------------
++How to Build/Execute the Sample Code
++------------------------------------
++For Windows:
++============
++1. Open the solution "QuoteGenerationSample.sln" with Microsoft Visual Studio
++2. Install Intel(R)_SGX_Windows_SDK_2.2.xxx.xxx, NuGet package DCAP_Components.1.0.100.1.nupkg, DCAP INF installer,
++3. Build and execute it directly
++
++For Linux:
++=========
++1. Install prebuilt Intel(R) SGX SDK and PSW Installer
++    a. sgx_linux_x64_sdk_${version}.bin
++    b. libsgx-enclave-common_{version}-{revision}_{arch}.deb
++2. Install bellow DCAP Debian packages: 
++    a. libsgx-dcap-ql_{version}-{revision}_{arch}.deb
++    b. libsgx-dcap-ql-dev_{version}-{revision}_{arch}.deb
++3. Build the project with the prepared Makefile:
++    a. Release build:
++        $ make
++    b. Debug build:
++        $ make DEBUG=1
++4. Execute the binary:
++    $ ./app
++5. Remember to "make clean" before switching build mode
++
