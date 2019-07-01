@@ -178,8 +178,11 @@ ifndef ECDSA
 	$(MAKE) -C deps/wolfssl-examples/SGX_Linux SGX_MODE=HW SGX_DEBUG=1 SGX_WOLFSSL_LIB=$(shell readlink -f deps/wolfssl/IDE/LINUX-SGX) SGX_SDK=$(SGX_SDK) WOLFSSL_ROOT=$(shell readlink -f deps/wolfssl) SGX_RA_TLS_LIB=$(shell readlink -f .)
 endif
 
-README.html : README.md
+%.html: %.md
 	pandoc --from markdown_github --to html --standalone $< --output $@
+
+.PHONY=html
+html: README.html README-ECDSA.html
 
 SCONE_SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -ISCONE/deps/local/include \
 	-Ideps/linux-sgx/common/inc/internal \

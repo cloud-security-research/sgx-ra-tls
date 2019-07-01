@@ -1,6 +1,8 @@
 # Introduction
 
-This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying [white paper](whitepaper.pdf) "Integrating Remote Attestation with Transport Layer Security" provides more details.
+This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying [white paper](whitepaper.pdf) "Integrating Remote Attestation with Transport Layer Security" provides more details. RA-TLS supports [EPID](https://software.intel.com/sites/default/files/managed/57/0e/ww10-2016-sgx-provisioning-and-attestation-final.pdf) and [ECDSA](https://software.intel.com/sites/default/files/managed/f1/b8/intel-sgx-support-for-third-party-attestation.pdf)-based attestation.
+
+Documentation on ECDSA-based attestation is [split out into a separate document](README-ECDSA.html).
 
 ## Repository Structure
 
@@ -28,11 +30,11 @@ Some files may only exist after building the sources.
 
 ## Code Structure
 
-The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. We implemented the challenger and attester using two different cryptographic libraries: wolfSSL ([challenger](wolfssl-ra-challenger.c), [attester](wolfssl-ra-attester.c)), mbedtls ([challenger](mbedtls-ra-challenger.c), [attester](mbedtls-ra-attester.c)) and OpenSSL ([challenger](openssl-ra-challenger.c), [attester](openssl-ra-attester.c)). Note that the attester must communicate with the Intel Attestation Service and currently depends on OpenSSL to do this.
+The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. The challenger and attester are implemented with three different TLS libraries: wolfSSL ([challenger](wolfssl-ra-challenger.c), [attester](wolfssl-ra-attester.c)), mbedtls ([challenger](mbedtls-ra-challenger.c), [attester](mbedtls-ra-attester.c)) and OpenSSL ([challenger](openssl-ra-challenger.c), [attester](openssl-ra-attester.c)).
 
 The attester's code consists of [trusted](sgxsdk-ra-attester_t.c) and [untrusted](sgxsdk-ra-attester_u.c) SGX-SDK specific code to produce a quote using the SGX SDK. If the SGX SDK is not used, e.g., when using Graphene-SGX, there is code to [obtain the SGX quote](nonsdk-ra-attester.c) by directly communicating with the platform's architectural enclave.
 
-Given a quote, there is [code to obtain an attestation verification report](ias-ra.c) from the Intel Attestation Service. This code uses libcurl and OpenSSL.
+Given a quote, there is [code to obtain an attestation verification report](ias-ra.c) from the Intel Attestation Service. This code depends on libcurl.
 
 [An SGX SDK-based server](deps/wolfssl-examples/SGX_Linux) based on wolfSSL demonstrates how to use the [public attester API](ra-attester.h).
 
@@ -44,13 +46,11 @@ We have tested the code with enclaves created using the Intel SGX SDK, Graphene-
 
 ## Prerequisites
 
-The code is tested with the SGX SDK (v2.0), SGX driver (v2.0) and SGX PSW (v2.0) installed on the host. Results may vary with different versions. Follow the [official instructions](https://01.org/intel-software-guard-extensions/downloads) to install the components and ensure they are working as intended. For Graphene-SGX, follow [their instructions](https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start) to build and load the Graphene-SGX kernel module. Only the Graphene-SGX kernel module is required as a prerequisite. Graphene itself is built by the scripts.
+The code is tested with the SGX SDK (v2.4), SGX driver (v2.4) and SGX PSW (v2.4) installed on the host. Results may vary with different versions. Follow the [official instructions](https://01.org/intel-software-guard-extensions/downloads) to install the components and ensure they are working as intended. For Graphene-SGX, follow [their instructions](https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start) to build and load the Graphene-SGX kernel module. Only the Graphene-SGX kernel module is required as a prerequisite. Graphene itself is built by the scripts.
 
-[Register a (self-signed) certificate](https://software.intel.com/formfill/sgx-onboarding) to be able to connect to Intel's Attestation Service (IAS). The registration process will also assign you a software provider ID (SPID). It is recommended to store the private key and certificate in the file ias-client-key.pem and ias-client-cert.pem in the project's root directory. Otherwise, the paths in ra_tls_options.c, ssl-server.manifest and sgxlkl/ratls/Makefile must be updated accordingly.
+To use the Intel Attestation Service for EPID-based attestation an [account must be created](https://api.portal.trustedservices.intel.com/EPID-attestation). The registration process will provide a subscription key and a software provider ID (SPID) which must be updated in [ra_tls_options.c](ra_tls_options.c). ECDSA-based attestation [requires a separate registration.](https://api.portal.trustedservices.intel.com/provisioning-certification)
 
-In any case, you must update the SPID and quote type (linkable vs unlinkable) in [ra_tls_options.c](ra_tls_options.c) after registering with Intel.
-
-We support building the code in a Docker container. We provide a [Dockerfile](Dockerfile) to install all the required packages. If you prefer to build on your host system, the Dockerfile will guide you which packages and additional software to install. You can create an image based on the Dockerfile as such
+We support building the code in a Docker container. We provide a [Dockerfile](Dockerfile) to install all the required packages. If you prefer to build on your host system, the Dockerfile documents which packages and additional software to install. You can create an image based on the Dockerfile as such
 
     docker build -t ratls .
 
@@ -58,7 +58,7 @@ If you want to use SCONE and have access to their Docker images, edit the Docker
 
     docker build -t ratls-scone .
 
-## Build instructions
+## Build Instructions
 
 The [build script](build.sh) creates executables based on either the Intel SGX SDK, Graphene-SGX, SCONE or SGX-LKL, depending on the first parameter
 
@@ -77,6 +77,8 @@ In the running container, change the directory and kick-off the build process
 
     cd /project
     ./build.sh sgxsdk|graphene|scone|sgxlkl
+
+## Build Instructions for ECDSA Attestation
 
 # Run
 
@@ -155,52 +157,3 @@ Each client outputs a bunch of connection-related information, such as the serve
 The Graphene-SGX client wolfssl-client-mutual only works in combination with wolfssl-ssl-server-mutual.
 
     SGX=1 ./deps/graphene/Runtime/pal_loader ./wolfssl-client-mutual
-
-# ECDSA-based Attestation
-
-ECDSA-based attestation is an alternative to the EPID-based attestation model for environments where platform privacy less of a concern and/or the specific deployment precludes interaction with external services (e.g., Intel Attestation Service) during the attestation process. Section X.X of the [RA-TLS whitepaper](whitepaper.pdf) provides additional information on supporting ECDSA-based attestation within RA-TLS.
-
-## Background
-
-
-
-## Pre-requisites
-
-Follow the installation instructions at https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release to prepare the system to compile the RA-TLS library and its sample programs. Ensure you can successfully run the quote generation and quote verification sample programs from the DCAP software distribution.
-
-In particular, the Intel SGX Data Center Attestation Primitives (DCAP) come with their own SGX driver and require the SGX SDK v2.4.
-
-The Dockerfile [Dockerfile-ecdsa.template](Dockerfile-ecdsa.template) documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.
-
-## Build
-
-We provide a [Dockerfile template](Dockerfile-ecdsa.template) to build everything in a container. To create the Docker image issue ```make docker-image-ecdsa```. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.
-
-If the platform meets all the requirements for ECDSA-based attestation, EPID attestation should continue to work as expected. However, when switching between EPID and ECDSA, run "make mrproper" to clean the state before rebuilding the stack.
-
-```
-ECDSA=1 ./build.sh graphene && ECDSA=1 make wolfssl-ra-attester && ECDSA=1 make wolfssl-ra-challenger && make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample
-```
-
-Go get a coffee. It will take a while.
-
-## Run
-
-We provide two sample programs to demonstrate ECDSA-based attestation within RA-TLS: An attester to generate an RA-TLS certificate and key; a challenger to verify the ECDSA-based RA-TLS certificate.
-
-To run the attester execute
-
-```
-deps/graphene/Runtime/pal-Linux-SGX ./wolfssl-ra-attester ecdsa
-```
-
-This program outputs an ECDSA-based RA-TLS certificate and the corresponding private key in ./ecdsa-crt.der and ./ecdsa-key.der, respectively.
-
-To verify the RA-TLS certificate run
-
-```
-LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger ecdsa-crt.der ecdsa
-```
-
-## Resources
-
