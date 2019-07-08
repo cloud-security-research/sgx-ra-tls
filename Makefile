@@ -458,26 +458,31 @@ endif
 
 ifdef ECDSA
 # TODO merge FLC changes into Graphene master.
-GRAPHENE_COMMIT?=9e30c4ba090c2d9e1cc629918a603a7f87474820
-GRAPHENE_BRANCH?=flexible_launch_control
-GRAPHENE_URI?=https://github.com/thomasknauth/graphene.git
+GRAPHENE_COMMIT?=0bc6b460b8e516615658f682eeebc3e7af48f0a7
 else
 GRAPHENE_COMMIT?=ba169becae4846dbca76a41c91f785a80fe15e7e
+endif
 GRAPHENE_URI?=https://github.com/oscarlab/graphene.git
+
+ifdef ECDSA
+# Origin lives at https://github.com/thomasknauth/graphene-sgx-driver
+GRAPHENE_DRIVER_COMMIT?=4d0dc8bd261567aa3b69170eeacca076cbe9799b
 endif
 
 deps/graphene/Makefile: deps/linux-sgx-driver
 	cd deps && git clone --recursive $(GRAPHENE_URI)
 ifdef ECDSA
 # TODO upstream changes to graphene-sgx-driver
-	rm -rf deps/graphene/Pal/src/host/Linux-SGX/sgx-driver
-	cd deps/graphene/Pal/src/host/Linux-SGX && git clone https://github.com/thomasknauth/graphene-sgx-driver.git sgx-driver
-	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && git checkout ecdsa
+	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && git checkout $(GRAPHENE_DRIVER_COMMIT)
+	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && patch -p1 < ../../../../../../../00-graphene-driver-dcap.patch
 endif
 # Use --force here because some directories moved into standalone
 # repositories at some point.
 	cd deps/graphene && git checkout --force $(GRAPHENE_COMMIT)
 	cd deps/graphene && openssl genrsa -3 -out Pal/src/host/Linux-SGX/signer/enclave-key.pem 3072
+ifdef ECDSA
+	cd deps/graphene && patch -p1 < ../../00-graphene-flexible-launch-control.patch
+endif
 
 deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
 # The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.

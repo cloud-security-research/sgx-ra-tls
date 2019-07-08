@@ -1,0 +1,15 @@
+diff --git a/graphene-sgx.h b/graphene-sgx.h
+index ac15319..fe97ee9 100644
+--- a/graphene-sgx.h
++++ b/graphene-sgx.h
+@@ -16,7 +16,9 @@
+ #define __packed __attribute__((packed))
+ #endif
+ 
+-#if SDK_DRIVER_VERSION >= KERNEL_VERSION(1, 9, 0)
++#if SDK_DRIVER_VERSION >= KERNEL_VERSION(2, 4, 0)
++#include "linux-sgx-driver/include/uapi/asm/sgx.h"
++#elif SDK_DRIVER_VERSION >= KERNEL_VERSION(1, 9, 0)
+ /*
+  * isgx_user.h renamed as sgx_user.h in SGX driver 1.9:
+  * https://github.com/intel/linux-sgx-driver/commit/45c139d4a824091b3923d5677ae8794e9d45abc0

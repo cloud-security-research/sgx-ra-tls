@@ -1,0 +1,129 @@
+diff --git a/LibOS/shim/test/native/manifest.template b/LibOS/shim/test/native/manifest.template
+index 6714c1c..021304e 100644
+--- a/LibOS/shim/test/native/manifest.template
++++ b/LibOS/shim/test/native/manifest.template
+@@ -27,3 +27,4 @@ sgx.trusted_files.libm = file:$(LIBCDIR)/libm.so.6
+ sgx.trusted_files.libpthread = file:$(LIBCDIR)/libpthread.so.0
+ 
+ sgx.trusted_files.unix_pipe = file:unix.c
++sgx.disable_avx = 1
+\ No newline at end of file
+diff --git a/LibOS/shim/test/native/static.manifest.template b/LibOS/shim/test/native/static.manifest.template
+index 832b733..44cfab3 100644
+--- a/LibOS/shim/test/native/static.manifest.template
++++ b/LibOS/shim/test/native/static.manifest.template
+@@ -5,3 +5,5 @@ loader.debug_type = inline
+ fs.mount.lib.type = chroot
+ fs.mount.lib.path = /lib
+ fs.mount.lib.uri = file:$(LIBCDIR)
++
++sgx.disable_avx = 1
+\ No newline at end of file
+diff --git a/Pal/src/host/Linux-SGX/sgx_framework.c b/Pal/src/host/Linux-SGX/sgx_framework.c
+index 7a63a0e..794b6bd 100644
+--- a/Pal/src/host/Linux-SGX/sgx_framework.c
++++ b/Pal/src/host/Linux-SGX/sgx_framework.c
+@@ -12,7 +12,7 @@
+ 
+ int gsgx_device = -1;
+ int isgx_device = -1;
+-#define ISGX_FILE "/dev/isgx"
++#define ISGX_FILE "/dev/sgx"
+ 
+ void * zero_page;
+ 
+@@ -125,7 +125,7 @@ bool is_wrfsbase_supported (void)
+ int create_enclave(sgx_arch_secs_t * secs,
+                    unsigned long baseaddr,
+                    unsigned long size,
+-                   sgx_arch_token_t * token)
++                   sgx_arch_sigstruct_t * sigstruct)
+ {
+     int flags = MAP_SHARED;
+ 
+@@ -142,9 +142,9 @@ int create_enclave(sgx_arch_secs_t * secs,
+     secs->size = pagesize;
+     while (secs->size < size)
+         secs->size <<= 1;
+-    secs->ssaframesize = get_ssaframesize(token->attributes.xfrm) / pagesize;
+-    secs->miscselect = token->miscselect_mask;
+-    memcpy(&secs->attributes, &token->attributes,
++    secs->ssaframesize = get_ssaframesize(sigstruct->attributes.xfrm) / pagesize;
++    secs->miscselect = sigstruct->miscselect_mask;
++    memcpy(&secs->attributes, &sigstruct->attributes,
+            sizeof(sgx_arch_attributes_t));
+     /* Do not initialize secs->mrsigner and secs->mrenclave here as they are
+      * not used by ECREATE to populate the internal SECS. SECS's mrenclave is
+@@ -323,7 +323,14 @@ int init_enclave(sgx_arch_secs_t * secs,
+         SGX_DBG(DBG_I, " %02x", sigstruct->enclave_hash[i]);
+     SGX_DBG(DBG_I, "\n");
+ 
+-#if SDK_DRIVER_VERSION >= KERNEL_VERSION(1, 8, 0)
++#if SDK_DRIVER_VERSION >= KERNEL_VERSION(2, 4, 0)
++    struct sgx_enclave_init param = {
++        .addr           = enclave_valid_addr,
++        .sigstruct      = (uint64_t) sigstruct
++    };
++    int ret = INLINE_SYSCALL(ioctl, 3, isgx_device, SGX_IOC_ENCLAVE_INIT,
++                             &param);
++#elif SDK_DRIVER_VERSION >= KERNEL_VERSION(1, 8, 0)
+     struct sgx_enclave_init param = {
+         .addr           = enclave_valid_addr,
+         .sigstruct      = (uint64_t) sigstruct,
+diff --git a/Pal/src/host/Linux-SGX/sgx_internal.h b/Pal/src/host/Linux-SGX/sgx_internal.h
+index 4f39167..deac00b 100644
+--- a/Pal/src/host/Linux-SGX/sgx_internal.h
++++ b/Pal/src/host/Linux-SGX/sgx_internal.h
+@@ -91,7 +91,7 @@ int read_enclave_sigstruct (int sigfile, sgx_arch_sigstruct_t * sig);
+ int create_enclave(sgx_arch_secs_t * secs,
+                    unsigned long base,
+                    unsigned long size,
+-                   sgx_arch_token_t * token);
++                   sgx_arch_sigstruct_t * sigstruct);
+ 
+ enum sgx_page_type { SGX_PAGE_SECS, SGX_PAGE_TCS, SGX_PAGE_REG };
+ int add_pages_to_enclave(sgx_arch_secs_t * secs,
+diff --git a/Pal/src/host/Linux-SGX/sgx_main.c b/Pal/src/host/Linux-SGX/sgx_main.c
+index 9a5a573..4210a1f 100644
+--- a/Pal/src/host/Linux-SGX/sgx_main.c
++++ b/Pal/src/host/Linux-SGX/sgx_main.c
+@@ -290,11 +290,11 @@ int initialize_enclave (struct pal_enclave * enclave)
+     else
+         enclave->baseaddr = heap_min = 0;
+ 
+-    TRY(read_enclave_token, enclave->token, &enclave_token);
++    //TRY(read_enclave_token, enclave->token, &enclave_token);
+     TRY(read_enclave_sigstruct, enclave->sigfile, &enclave_sigstruct);
+ 
+     TRY(create_enclave,
+-        &enclave_secs, enclave->baseaddr, enclave->size, &enclave_token);
++        &enclave_secs, enclave->baseaddr, enclave->size, &enclave_sigstruct);
+ 
+     enclave->baseaddr = enclave_secs.baseaddr;
+     enclave->size = enclave_secs.size;
+@@ -762,15 +762,16 @@ static int load_enclave (struct pal_enclave * enclave,
+     }
+ 
+     uri = alloc_concat(uri, strlen(uri) - 4, ".token", -1);
+-    enclave->token = INLINE_SYSCALL(open, 3, uri + 5, O_RDONLY|O_CLOEXEC, 0);
+-    if (IS_ERR(enclave->token)) {
+-        SGX_DBG(DBG_E, "cannot open token \'%s\'. Use \'"
+-                PAL_FILE("pal-sgx-get-token")
+-                "\' on the runtime host, or run \'make SGX_RUN=1\' "
+-                "in the Graphene source, to create the token file.\n",
+-                uri);
+-        return -EINVAL;
+-    }
++    /* enclave->token = INLINE_SYSCALL(open, 3, uri + 5, O_RDONLY|O_CLOEXEC, 0); */
++    /* if (IS_ERR(enclave->token)) { */
++    /*     SGX_DBG(DBG_E, "cannot open token \'%s\'. Use \'" */
++    /*             PAL_FILE("pal-sgx-get-token") */
++    /*             "\' on the runtime host, or run \'make SGX_RUN=1\' " */
++    /*             "in the Graphene source, to create the token file.\n", */
++    /*             uri); */
++    /*     return -EINVAL; */
++    /* } */
++    enclave->token = 0;
+ 
+     /* Initialize the enclave */
+     ret = initialize_enclave(enclave);
