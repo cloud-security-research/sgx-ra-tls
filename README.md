@@ -11,8 +11,8 @@ The repository root directory contains code to generate and parse extended X.509
 - Sample server (attester) 
 
     * using the SGX SDK based on [wolfSSL](deps/wolfssl-examples/SGX_Linux)
-    * using [Graphene-SGX](https://github.com/oscarlab/graphene), [SCONE](https://sconedocs.github.io) or [SGX-LKL](https://github.com/lsds/sgx-lkl) based on [wolfSSL](deps/wolfssl-examples/tls/server-tls.c)
-    * using [Graphene-SGX](https://github.com/oscarlab/graphene) based on [mbedtls](deps/mbedtls/programs/ssl/ssl_server.c)
+    * using [Graphene](https://github.com/oscarlab/graphene), [SCONE](https://sconedocs.github.io) or [SGX-LKL](https://github.com/lsds/sgx-lkl) based on [wolfSSL](deps/wolfssl-examples/tls/server-tls.c)
+    * using [Graphene](https://github.com/oscarlab/graphene) based on [mbedtls](deps/mbedtls/programs/ssl/ssl_server.c)
     * [Python-based HTTPS web server](sgxlkl/https-server/https-server.py) running on SGX-LKL
 
 - Non-SGX clients (challengers) based on different TLS libraries
@@ -21,7 +21,7 @@ The repository root directory contains code to generate and parse extended X.509
     * [wolfSSL](deps/wolfssl-examples/tls/client-tls.c)
     * [OpenSSL](openssl-client.c)
 
-- Graphene-SGX client and server doing mutual attestation
+- Graphene client and server doing mutual attestation
 
     * [server-tls.c](deps/wolfssl-examples/tls/server-tls.c)
     * [client-tls.c](deps/wolfssl-examples/tls/client-tls.c)
@@ -32,7 +32,7 @@ Some files may only exist after building the sources.
 
 The code is split into two parts: the attester and the challenger. The challenger parses certificates, computes signatures and hashsums. The attester generates keys, certificates and interfaces with SGX. The challenger and attester are implemented with three different TLS libraries: wolfSSL ([challenger](wolfssl-ra-challenger.c), [attester](wolfssl-ra-attester.c)), mbedtls ([challenger](mbedtls-ra-challenger.c), [attester](mbedtls-ra-attester.c)) and OpenSSL ([challenger](openssl-ra-challenger.c), [attester](openssl-ra-attester.c)).
 
-The attester's code consists of [trusted](sgxsdk-ra-attester_t.c) and [untrusted](sgxsdk-ra-attester_u.c) SGX-SDK specific code to produce a quote using the SGX SDK. If the SGX SDK is not used, e.g., when using Graphene-SGX, there is code to [obtain the SGX quote](nonsdk-ra-attester.c) by directly communicating with the platform's architectural enclave.
+The attester's code consists of [trusted](sgxsdk-ra-attester_t.c) and [untrusted](sgxsdk-ra-attester_u.c) SGX-SDK specific code to produce a quote using the SGX SDK. If the SGX SDK is not used, e.g., when using Graphene, there is code to [obtain the SGX quote](nonsdk-ra-attester.c) by directly communicating with the platform's architectural enclave.
 
 Given a quote, there is [code to obtain an attestation verification report](ias-ra.c) from the Intel Attestation Service. This code depends on libcurl.
 
@@ -42,11 +42,11 @@ We provide three non-SGX clients ([mbedtls](deps/mbedtls/programs/ssl/ssl_client
 
 # Build
 
-We have tested the code with enclaves created using the Intel SGX SDK, Graphene-SGX, SCONE and SGX-LKL.
+We have tested the code with enclaves created using the Intel SGX SDK, Graphene, SCONE and SGX-LKL.
 
 ## Prerequisites
 
-The code is tested with the SGX SDK (v2.4), SGX driver (v2.4) and SGX PSW (v2.4) installed on the host. Results may vary with different versions. Follow the [official instructions](https://01.org/intel-software-guard-extensions/downloads) to install the components and ensure they are working as intended. For Graphene-SGX, follow [their instructions](https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start) to build and load the Graphene-SGX kernel module. Only the Graphene-SGX kernel module is required as a prerequisite. Graphene itself is built by the scripts.
+The code is tested with the [Intel SGX Linux 2.4 Release](https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-linux-2.4-release) installed on the host. Results may vary with different versions. Follow the official instructions to install the components and ensure they are working as intended. For Graphene, follow [their instructions](https://github.com/oscarlab/graphene/wiki/SGX-Quick-Start) to build and load the Graphene kernel module. Only the Graphene kernel module is required as a prerequisite. Graphene itself is built by the scripts.
 
 To use the Intel Attestation Service for EPID-based attestation an [account must be created](https://api.portal.trustedservices.intel.com/EPID-attestation). The registration process will provide a subscription key and a software provider ID (SPID) which must be updated in [ra_tls_options.c](ra_tls_options.c). ECDSA-based attestation [requires a separate registration.](https://api.portal.trustedservices.intel.com/provisioning-certification)
 
@@ -60,7 +60,7 @@ If you want to use SCONE and have access to their Docker images, edit the Docker
 
 ## Build Instructions
 
-The [build script](build.sh) creates executables based on either the Intel SGX SDK, Graphene-SGX, SCONE or SGX-LKL, depending on the first parameter
+The [build script](build.sh) creates executables based on either the Intel SGX SDK, Graphene, SCONE or SGX-LKL, depending on the first parameter
 
     ./build.sh sgxsdk|graphene|scone|sgxlkl
 
@@ -78,8 +78,6 @@ In the running container, change the directory and kick-off the build process
     cd /project
     ./build.sh sgxsdk|graphene|scone|sgxlkl
 
-## Build Instructions for ECDSA Attestation
-
 # Run
 
 ## Intel SGX SDK
@@ -96,13 +94,13 @@ Use the container's ID with the following command for a 2nd console.
 
     docker exec -ti --user root [container id] bash
 
-## Graphene-SGX
+## Graphene
 
 First, start a socat instance to make AESM's named Unix socket accessible over TCP/IP.
 
     socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &
 
-Next, start the server application on Graphene-SGX
+Next, start the server application on Graphene
 
     SGX=1 ./deps/graphene/Runtime/pal_loader ./[binary]
 
@@ -110,7 +108,7 @@ where [binary] can be mbedtls-ssl-server, wolfssl-ssl-server or wolfssl-ssl-serv
 
 ## SCONE
 
-Similar to Graphene-SGX, we use socat to make AESM accessible over TCP/IP. SCONE can in principle to talk to AESM's named Unix socket directly, but support for this is currently not implemented.
+Similar to Graphene, we use socat to make AESM accessible over TCP/IP. SCONE can in principle to talk to AESM's named Unix socket directly, but support for this is currently not implemented.
 
     socat -t10 TCP-LISTEN:1234,bind=127.0.0.1,reuseaddr,fork,range=127.0.0.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &
 
@@ -154,6 +152,6 @@ Each client outputs a bunch of connection-related information, such as the serve
 
 ### SGX client
 
-The Graphene-SGX client wolfssl-client-mutual only works in combination with wolfssl-ssl-server-mutual.
+The Graphene client wolfssl-client-mutual only works in combination with wolfssl-ssl-server-mutual.
 
     SGX=1 ./deps/graphene/Runtime/pal_loader ./wolfssl-client-mutual

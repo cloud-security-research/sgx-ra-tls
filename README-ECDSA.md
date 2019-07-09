@@ -6,15 +6,15 @@ For RA-TLS, the main impact of ECDSA-based attestation is the different attestat
 
 ## Prerequisites
 
-Follow the installation instructions at https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release to prepare the system to compile the RA-TLS library and its sample programs. Ensure you can successfully run the [quote generation](https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/SampleCode/QuoteGenerationSample) and [quote verification](https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/QuoteVerification/Src) sample programs from the DCAP software distribution.
+Follow the official [installation instructions](https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release) to prepare the system to compile the RA-TLS library and its sample programs. Ensure you can successfully run the [quote generation](https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/SampleCode/QuoteGenerationSample) and [quote verification](https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/QuoteVerification/Src) sample programs from the DCAP software distribution. Most notably, ECDSA attestation currently requires a different SGX kernel driver. Keep this in mind when switching between EPID and ECDSA.
 
 In particular, the Intel SGX Data Center Attestation Primitives (DCAP) come with their own SGX driver and require the SGX SDK v2.4.
 
-The Dockerfile [Dockerfile-ecdsa.template](Dockerfile-ecdsa.template) documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.
+The Dockerfile [Dockerfile.template](Dockerfile.template) documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.
 
 ## Build
 
-We provide a [Dockerfile template](Dockerfile-ecdsa.template) to build everything in a container. To create the Docker image issue ```make docker-image-ecdsa```. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.
+We provide a [Dockerfile template](Dockerfile.template) to build everything in a container. To create the Docker image issue ```make docker-image```. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.
 
 If the platform meets all the requirements for ECDSA-based attestation, EPID attestation should continue to work as expected. However, when switching between EPID and ECDSA, run "make mrproper" to reset the state before rebuilding the stack.
 
@@ -26,6 +26,14 @@ make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample
 ```
 
 Go get a coffee. It will take a while.
+
+### Kernel Modules
+
+Two Linux kernel modules must be loaded for SGX and Graphene.
+
+The sources for the Intel SGX Linux driver for DCAP are located in ```deps/SGXDataCenterAttestationPrimitives/driver/linux/```. Build and load as usual: ```cd deps/SGXDataCenterAttestationPrimitives/driver/linux && make && sudo insmod intel_sgx.ko```
+
+The Graphene driver sources are in ```deps/graphene/Pal/src/host/Linux-SGX/sgx-driver```. It is built automatically with the rest of Graphene. Load as usual: ```sudo insmod deps/graphene/Pal/src/host/Linux-SGX/sgx-driver/graphene-sgx.ko```
 
 ## Run
 
@@ -43,10 +51,10 @@ To run the attester execute
 deps/graphene/Runtime/pal-Linux-SGX ./wolfssl-ra-attester ecdsa
 ```
 
-This program outputs an ECDSA-based RA-TLS certificate and the corresponding private key in ./ecdsa-crt.der and ./ecdsa-key.der, respectively.
+This program outputs an ECDSA-based RA-TLS certificate and the corresponding private key in ```crt.der``` and ```key.der```, respectively.
 
 To verify the RA-TLS certificate run
 
 ```
-LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger ecdsa-crt.der ecdsa
+LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger crt.der
 ```

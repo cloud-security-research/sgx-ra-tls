@@ -10,27 +10,31 @@
 <body>
 <h1 id="ecdsa-based-attestation">ECDSA-based Attestation</h1>
 <p>ECDSA-based attestation is an alternative to the EPID-based attestation model for environments where platform privacy is less of a concern and/or the specific deployment precludes interaction with external services (e.g., Intel Attestation Service) during the attestation process. The <a href="https://software.intel.com/sites/default/files/managed/f1/b8/intel-sgx-support-for-third-party-attestation.pdf">ECDSA attestation white paper</a> provides additional information. In particular Section 3.1 describes the chain of trust from the platform-local attestation key to Intel.</p>
-<p>For RA-TLS the main impact of ECDSA-based attestation is the different attestation evidence embedded in the RA-TLS certificate. The <a href="whitepaper.pdf">RA-TLS whitepaper</a> has more details on this.</p>
+<p>For RA-TLS, the main impact of ECDSA-based attestation is the different attestation evidence embedded in the RA-TLS certificate. The <a href="whitepaper.pdf">RA-TLS whitepaper</a> has more details on this.</p>
 <h2 id="prerequisites">Prerequisites</h2>
-<p>Follow the installation instructions at <a href="https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release" class="uri">https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release</a> to prepare the system to compile the RA-TLS library and its sample programs. Ensure you can successfully run the <a href="https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/SampleCode/QuoteGenerationSample">quote generation</a> and <a href="https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/QuoteVerification/Src">quote verification</a> sample programs from the DCAP software distribution.</p>
+<p>Follow the official <a href="https://01.org/intel-softwareguard-extensions/downloads/intel-sgx-dcap-linux-1.0.1-release">installation instructions</a> to prepare the system to compile the RA-TLS library and its sample programs. Ensure you can successfully run the <a href="https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/SampleCode/QuoteGenerationSample">quote generation</a> and <a href="https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/QuoteVerification/Src">quote verification</a> sample programs from the DCAP software distribution. Most notably, ECDSA attestation currently requires a different SGX kernel driver. Keep this in mind when switching between EPID and ECDSA.</p>
 <p>In particular, the Intel SGX Data Center Attestation Primitives (DCAP) come with their own SGX driver and require the SGX SDK v2.4.</p>
-<p>The Dockerfile <a href="Dockerfile-ecdsa.template" class="uri">Dockerfile-ecdsa.template</a> documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.</p>
+<p>The Dockerfile <a href="Dockerfile.template" class="uri">Dockerfile.template</a> documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.</p>
 <h2 id="build">Build</h2>
-<p>We provide a <a href="Dockerfile-ecdsa.template">Dockerfile template</a> to build everything in a container. To create the Docker image issue <code>make docker-image-ecdsa</code>. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.</p>
+<p>We provide a <a href="Dockerfile.template">Dockerfile template</a> to build everything in a container. To create the Docker image issue <code>make docker-image</code>. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.</p>
 <p>If the platform meets all the requirements for ECDSA-based attestation, EPID attestation should continue to work as expected. However, when switching between EPID and ECDSA, run &quot;make mrproper&quot; to reset the state before rebuilding the stack.</p>
 <pre><code>ECDSA=1 ./build.sh graphene &amp;&amp; \
 ECDSA=1 make wolfssl-ra-attester &amp;&amp; \
 ECDSA=1 make wolfssl-ra-challenger &amp;&amp; \
 make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample</code></pre>
 <p>Go get a coffee. It will take a while.</p>
+<h3 id="kernel-modules">Kernel Modules</h3>
+<p>Two Linux kernel modules must be loaded for SGX and Graphene.</p>
+<p>The sources for the Intel SGX Linux driver for DCAP are located in <code>deps/SGXDataCenterAttestationPrimitives/driver/linux/</code>. Build and load as usual: <code>cd deps/SGXDataCenterAttestationPrimitives/driver/linux &amp;&amp; make &amp;&amp; sudo insmod intel_sgx.ko</code></p>
+<p>The Graphene driver sources are in <code>deps/graphene/Pal/src/host/Linux-SGX/sgx-driver</code>. It is built automatically with the rest of Graphene. Load as usual: <code>sudo insmod deps/graphene/Pal/src/host/Linux-SGX/sgx-driver/graphene-sgx.ko</code></p>
 <h2 id="run">Run</h2>
 <p>First, start the background service that connects application enclaves to the quoting enclave. The original DCAP library assumes a quoting enclave runs alongside each and every application enclave. To enable applications developed independently of the Intel SGX SDK to use the quoting enclave a service akin to AESMD is required for now.</p>
 <pre><code>deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample/app &amp;</code></pre>
 <p>We provide two sample programs to demonstrate ECDSA-based attestation within RA-TLS: An attester to generate an RA-TLS certificate and key; a challenger to verify the ECDSA-based RA-TLS certificate.</p>
 <p>To run the attester execute</p>
 <pre><code>deps/graphene/Runtime/pal-Linux-SGX ./wolfssl-ra-attester ecdsa</code></pre>
-<p>This program outputs an ECDSA-based RA-TLS certificate and the corresponding private key in ./ecdsa-crt.der and ./ecdsa-key.der, respectively.</p>
+<p>This program outputs an ECDSA-based RA-TLS certificate and the corresponding private key in <code>crt.der</code> and <code>key.der</code>, respectively.</p>
 <p>To verify the RA-TLS certificate run</p>
-<pre><code>LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger ecdsa-crt.der ecdsa</code></pre>
+<pre><code>LD_LIBRARY_PATH=deps/local/lib ./wolfssl-ra-challenger crt.der</code></pre>
 </body>
 </html>
