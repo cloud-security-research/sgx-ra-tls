@@ -27,12 +27,13 @@ def determine_testcases():
 def main():
 
     for (mod, tc_class) in determine_testcases():
-            testcase = getattr(mod, tc_class)()
-            testcase.setup()
-            try:
-                testcase.main()
-            finally:
-                testcase.teardown()
+        print 'Executing %s:%s\n' % (mod.__name__, tc_class)
+        testcase = getattr(mod, tc_class)()
+        testcase.setup()
+        try:
+            testcase.main()
+        finally:
+            testcase.teardown()
 
 if __name__ == '__main__':
     main()
