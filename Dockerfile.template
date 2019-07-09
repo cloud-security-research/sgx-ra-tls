@@ -1,6 +1,7 @@
-# Software stack to demonstrate RA-TLS in combination with ECDSA-based attestation.
+# Software dependencies to build/run RA-TLS.
 
 FROM ubuntu:16.04
+# FROM sconecuratedimages/crosscompilers:releasecandidate
 
 # RUN sed -i 's/security\./old-releases\./g' /etc/apt/sources.list && sed -i 's/archive\./old-releases\./g' /etc/apt/sources.list
 
