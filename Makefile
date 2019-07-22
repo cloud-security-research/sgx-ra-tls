@@ -83,8 +83,11 @@ ias-ra-%.c: ias-ra.c
 	cp $< $@
 
 ias-ra-openssl.o: CFLAGS += -DUSE_OPENSSL
+ias-ra-openssl.o: deps/local/lib/libcurl-openssl.a
 ias-ra-wolfssl.o: CFLAGS += -DUSE_WOLFSSL
+ias-ra-wolfssl.o: deps/local/lib/libcurl-wolfssl.a
 ias-ra-mbedtls.o: CFLAGS += -DUSE_MBEDTLS
+ias-ra-mbedtls.o: deps/local/lib/libcurl-mbedtls.a
 
 wolfssl-ra-attester.o: ecdsa-sample-data/real/sample_data.h ecdsa-attestation-collateral.h
 wolfssl-ra-challenger.o: ecdsa-sample-data/real/sample_data.h
