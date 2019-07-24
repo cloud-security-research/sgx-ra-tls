@@ -470,7 +470,8 @@ GRAPHENE_DRIVER_COMMIT?=4d0dc8bd261567aa3b69170eeacca076cbe9799b
 endif
 
 deps/graphene/Makefile: deps/linux-sgx-driver
-	cd deps && git clone --recursive $(GRAPHENE_URI)
+	cd deps && git clone $(GRAPHENE_URI)
+	cd deps/graphene && git submodule update --init Pal/src/host/Linux-SGX/sgx-driver
 ifdef ECDSA
 # TODO upstream changes to graphene-sgx-driver
 	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && git checkout $(GRAPHENE_DRIVER_COMMIT)
