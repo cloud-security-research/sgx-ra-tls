@@ -12,6 +12,8 @@ In particular, the Intel SGX Data Center Attestation Primitives (DCAP) come with
 
 The Dockerfile [Dockerfile.template](Dockerfile.template) documents the software dependencies that must be installed on the system to successfully compile the RA-TLS library and its sample programs.
 
+To use ECDSA-based attestation an [API token must be acquired](https://api.portal.trustedservices.intel.com/provisioning-certification). The registration process will provide a subscription key for the ECDSA-related API endpoints. The script [ra_tls_options.c.sh](ra_tls_options.c.sh) generates a C source file with these values. Either define the environment variables before building or invoke the script manually before building, i.e., `ECDSA_SUBSCRIPTION_KEY=... bash ra_tls_options.c.sh`. See [ra_tls_options.c.sh](ra_tls_options.c.sh) for the specific variable format. 
+
 ## Build
 
 We provide a [Dockerfile template](Dockerfile.template) to build everything in a container. To create the Docker image issue ```make docker-image```. Because Graphene by default builds its kernel module, kernel headers are required. The make target specializes the template Dockerfile (Dockerfile-ecdsa.template) to include headers for the host's kernel version.

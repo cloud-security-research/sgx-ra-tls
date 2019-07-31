@@ -32,6 +32,8 @@ elif [[ $VARIANT == "scone" ]] ; then
     export CC=/usr/local/bin/scone-gcc
 fi
 
+make ra_tls_options.c
+
 mkdir -p deps
 make -j`nproc` deps
 pushd deps

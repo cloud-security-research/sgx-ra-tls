@@ -40,6 +40,9 @@ endif
 wolfssl-client: deps/wolfssl-examples/tls/client-tls.c wolfssl/libra-challenger.a
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -Lwolfssl -Ldeps/local/lib $(WOLFSSL_CLIENT_LIBS)
 
+ra_tls_options.c: ra_tls_options.c.sh
+	bash $^ > $@
+
 wolfssl-client-mutual: deps/wolfssl-examples/tls/client-tls.c ra_tls_options.c wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS) $(SGX_DCAP_LIB)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
@@ -252,7 +255,7 @@ mrproper: clean
 	$(RM) $(EXECS) $(LIBS)
 	$(RM) -rf deps
 	$(RM) -r openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger openssl-ra-attester wolfssl-ra-attester mbedtls-ra-attester
-	$(RM) messages.pb-c.h messages.pb-c.c ecdsa-aesmd-messages.pb-c.c ecdsa-aesmd-messages.pb-c.h
+	$(RM) messages.pb-c.h messages.pb-c.c ecdsa-aesmd-messages.pb-c.c ecdsa-aesmd-messages.pb-c.h ra_tls_options.c
 	$(MAKE) -C sgxlkl distclean
 
 .PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper

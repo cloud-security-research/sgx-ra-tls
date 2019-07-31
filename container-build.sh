@@ -48,5 +48,6 @@ docker run --device=/dev/isgx --device=/dev/sgx --device=/dev/gsgx \
        --privileged=true \
        -v /var/run/aesmd:/var/run/aesmd \
        -v$(pwd):/project \
+       -e SPID -e EPID_SUBSCRIPTION_KEY -e ECDSA_SUBSCRIPTION_KEY \
        -it $IMAGE bash -c "cd /project $CMD"
 popd
