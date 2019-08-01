@@ -1,0 +1,67 @@
+loader.preload = file:../../deps/graphene/Runtime/libsysdb.so
+loader.exec = file:redis/src/redis-server
+loader.env.LD_PRELOAD=/lib/redis-server-provision-secret.so
+#loader.env.LD_DEBUG=all
+loader.env.LD_LIBRARY_PATH = /lib:/usr/lib:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu
+# loader.debug_type = inline
+
+fs.mount.lib.type = chroot
+fs.mount.lib.path = /lib
+fs.mount.lib.uri = file:../../deps/graphene/Runtime/
+
+fs.mount.lib2.type = chroot
+fs.mount.lib2.path = /lib/x86_64-linux-gnu
+fs.mount.lib2.uri = file:/lib/x86_64-linux-gnu
+
+fs.mount.usr.type = chroot
+fs.mount.usr.path = /usr
+fs.mount.usr.uri = file:/usr
+
+fs.mount.etc.type = chroot
+fs.mount.etc.path = /etc
+fs.mount.etc.uri = file:/etc
+
+fs.mount.tmp.type = chroot
+fs.mount.tmp.path = /tmp
+fs.mount.tmp.uri = file:/tmp
+
+sys.stack.size = 1m
+sys.brk.size = 64M
+glibc.heap_size = 16M
+
+sgx.enclave_size = 512M
+sgx.thread_num = 16
+
+sgx.trusted_files.ld = file:../../deps/graphene/Runtime/ld-linux-x86-64.so.2
+sgx.trusted_files.libc = file:../../deps/graphene/Runtime/libc.so.6
+sgx.trusted_files.libdl = file:../../deps/graphene/Runtime/libdl.so.2
+sgx.trusted_files.libm = file:../../deps/graphene/Runtime/libm.so.6
+sgx.trusted_files.libpthread = file:../../deps/graphene/Runtime/libpthread.so.0
+sgx.trusted_files.libnss1 = file:/lib/x86_64-linux-gnu/libnss_compat.so.2
+sgx.trusted_files.libnss2 = file:/lib/x86_64-linux-gnu/libnss_files.so.2
+sgx.trusted_files.libnss3 = file:/lib/x86_64-linux-gnu/libnss_nis.so.2
+sgx.trusted_files.libnss4 = file:/lib/x86_64-linux-gnu/libnss_myhostname.so.2
+sgx.trusted_files.libnsl = file:/lib/x86_64-linux-gnu/libnsl.so.1
+#sgx.trusted_files.libevent = file:/usr/lib/x86_64-linux-gnu/libevent-2.0.so.5
+#sgx.trusted_files.libssl = file:../../deps/graphene/Runtime/libssl.so.1.0.0
+#sgx.trusted_files.libcrypto = file:../../deps/graphene/Runtime/libcrypto.so.1.0.0
+#sgx.trusted_files.libprotobufc = file:../../deps/graphene/Runtime/libprotobuf-c.so.1
+#sgx.trusted_files.libz = file:../../deps/graphene/Runtime/libz.so.1
+sgx.trusted_files.libnssdns = file:../../deps/graphene/Runtime/libnss_dns.so.2
+sgx.trusted_files.libresolv = file:../../deps/graphene/Runtime/libresolv.so.2
+sgx.trusted_files.librt = file:../../deps/graphene/Runtime/librt.so.1
+sgx.trusted_files.libgccs = file:/lib/x86_64-linux-gnu/libgcc_s.so.1
+
+sgx.allowed_files.passwd = file:/etc/passwd
+sgx.allowed_files.shadow = file:/etc/shadow
+sgx.allowed_files.nsswitchconf = file:/etc/nsswitch.conf
+sgx.allowed_files.gaiconf = file:/etc/gai.conf
+sgx.allowed_files.hostconf = file:/etc/host.conf
+sgx.allowed_files.hosts = file:/etc/hosts
+sgx.allowed_files.opensslcnf = file:/usr/lib/ssl/openssl.cnf
+
+sgx.trusted_files.provision = file:../../deps/graphene/Runtime/redis-server-provision-secret.so
+sgx.trusted_files.verifiercrt = file:verifier-crt.pem
+
+sgx.trusted_files.cacertificates = file:/etc/ssl/certs/ca-certificates.crt
+sgx.trusted_files.resolvconf = file:/etc/resolv.conf

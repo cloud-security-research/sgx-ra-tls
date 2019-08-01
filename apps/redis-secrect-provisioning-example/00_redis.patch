@@ -1,0 +1,37 @@
+diff --git a/src/config.c b/src/config.c
+index 86548bc..533c267 100644
+--- a/src/config.c
++++ b/src/config.c
+@@ -824,6 +824,21 @@ loaderr:
+     exit(1);
+ }
+ 
++#include <dlfcn.h>
++
++char* __get_provisioned_password(void) {
++    static char* (*fn)(void) = NULL;
++    if (fn == NULL) {
++        fn = dlsym(RTLD_NEXT, "get_provisioned_password");
++        if (fn == NULL) fn = -1;
++    }
++    
++    if (fn != NULL && fn != -1) {
++        return fn();
++    }
++    return NULL;
++}
++
+ /* Load the server configuration from the specified filename.
+  * The function appends the additional configuration directives stored
+  * in the 'options' string to the config file before loading.
+@@ -859,6 +874,10 @@ void loadServerConfig(char *filename, char *options) {
+     }
+     loadServerConfigFromString(config);
+     sdsfree(config);
++
++    char* pwd = __get_provisioned_password();
++    serverAssert(pwd != NULL ? strlen(pwd) < CONFIG_AUTHPASS_MAX_LEN : 1);
++    server.requirepass = pwd;
+ }
+ 
+ /*-----------------------------------------------------------------------------
