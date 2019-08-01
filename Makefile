@@ -9,7 +9,7 @@ SGX_DCAP?=deps/SGXDataCenterAttestationPrimitives/
 
 SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc -I$(SGX_DCAP)/QuoteVerification/Src/AttestationLibrary/include
 
-CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include $(SGX_DCAP_INC)
+CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include $(SGX_DCAP_INC) -fPIC
 CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS+=$(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS+=-DSGX_GROUP_OUT_OF_DATE
@@ -313,7 +313,7 @@ endif
 deps/openssl/config:
 	cd deps && git clone https://github.com/openssl/openssl.git
 	cd deps/openssl && git checkout OpenSSL_1_0_2g
-	cd deps/openssl && ./config --prefix=$(shell readlink -f deps/local) no-shared
+	cd deps/openssl && ./config --prefix=$(shell readlink -f deps/local) no-shared -fPIC
 
 deps/local/lib/libcrypto.a: deps/openssl/config
 	cd deps/openssl && $(MAKE) && $(MAKE) -j1 install
@@ -382,7 +382,7 @@ deps/mbedtls/CMakeLists.txt:
 	cd deps/mbedtls && patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
 	cd deps/mbedtls && patch -p1 < ../../mbedtls-ssl-server.patch
 	cd deps/mbedtls && patch -p1 < ../../mbedtls-client.patch
-	cd deps/mbedtls && cmake -DCMAKE_BUILD_TYPE=$(MBEDTLS_RELEASE_TYPE) -DENABLE_PROGRAMS=off -DCMAKE_C_COMPILER=$(CC) -DCMAKE_C_FLAGS="-DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" .
+	cd deps/mbedtls && cmake -DCMAKE_BUILD_TYPE=$(MBEDTLS_RELEASE_TYPE) -DENABLE_PROGRAMS=off -DCMAKE_C_COMPILER=$(CC) -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" .
 
 deps/local/lib/libmbedtls.a: deps/mbedtls/CMakeLists.txt
 	$(MAKE) -C deps/mbedtls
@@ -404,19 +404,19 @@ endif
 
 deps/local/lib/libcurl-wolfssl.a: deps/curl/configure deps/local/lib/libwolfssl.a
 	cp -a deps/curl deps/curl-wolfssl
-	cd deps/curl-wolfssl && ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
+	cd deps/curl-wolfssl && CFLAGS="-fPIC" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
 	cd deps/curl-wolfssl && $(MAKE)
 	cp deps/curl-wolfssl/lib/.libs/libcurl.a deps/local/lib/libcurl-wolfssl.a
 
 deps/local/lib/libcurl-openssl.a: deps/curl/configure deps/local/lib/libcrypto.a
 	cp -a deps/curl deps/curl-openssl
-	cd deps/curl-openssl && LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
+	cd deps/curl-openssl && CFLAGS="-fPIC" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
 	cd deps/curl-openssl && $(MAKE) && $(MAKE) install
 	rename 's/libcurl/libcurl-openssl/' deps/local/lib/libcurl.*
 
 deps/local/lib/libcurl-mbedtls.a: deps/curl/configure deps/local/lib/libmbedtls.a
 	cp -a deps/curl deps/curl-mbedtls
-	cd deps/curl-mbedtls && LIBS="" ./configure $(CURL_CONFFLAGS) --without-ssl --with-mbedtls=$(shell readlink -f deps/local)
+	cd deps/curl-mbedtls && CFLAGS="-fPIC" LIBS="" ./configure $(CURL_CONFFLAGS) --without-ssl --with-mbedtls=$(shell readlink -f deps/local)
 	cd deps/curl-mbedtls && $(MAKE) && $(MAKE) install
 	rename 's/libcurl/libcurl-mbedtls/' deps/local/lib/libcurl.*
 
@@ -425,7 +425,7 @@ deps/zlib/configure:
 
 deps/local/lib/libz.a: deps/zlib/configure
 	mkdir -p deps
-	cd deps/zlib && CFLAGS="-O2" ./configure --prefix=$(shell readlink -f deps/local) --static
+	cd deps/zlib && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --static
 	cd deps/zlib && $(MAKE) install
 
 deps/protobuf-c/configure:
@@ -433,7 +433,7 @@ deps/protobuf-c/configure:
 	cd deps/protobuf-c && ./autogen.sh
 
 deps/local/lib/libprotobuf-c.a: deps/protobuf-c/configure
-	cd deps/protobuf-c && CFLAGS="-O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
+	cd deps/protobuf-c && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
 	cd deps/protobuf-c && $(MAKE) protobuf-c/libprotobuf-c.la
 	mkdir -p deps/local/lib && mkdir -p deps/local/include/protobuf-c
 	cp deps/protobuf-c/protobuf-c/.libs/libprotobuf-c.a deps/local/lib
@@ -538,3 +538,17 @@ ifndef ECDSA
 tests: openssl-ra-attester mbedtls-ra-attester
 endif
 tests: openssl-ra-challenger wolfssl-ra-challenger mbedtls-ra-challenger wolfssl-ra-attester
+
+EPID_TEST_SUITE=tests/00_sgxsdk_server_client.py \
+	tests/00_graphene_server_client.py \
+	tests/00_attester_challenger.py \
+	tests/00_sgxlkl_server_client.py \
+	tests/00_secrect_provisioning_example.py
+
+.PHONY: check
+check: tests
+ifeq ($(ECDSA),1)
+	python3 tests/regression.py tests/00_ecdsa_attester_challenger.py
+else
+	python3 tests/regression.py $(EPID_TEST_SUITE)
+endif

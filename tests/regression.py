@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import glob
 import imp
@@ -14,7 +14,7 @@ def determine_testcases():
     else:
         py_files = glob.glob('tests/[0-9]*.py')
         
-    print py_files
+    print(py_files)
     for f in py_files:
         modname = os.path.basename(f).replace('.py', '')
         mod = imp.load_source(modname, f)
@@ -27,7 +27,7 @@ def determine_testcases():
 def main():
 
     for (mod, tc_class) in determine_testcases():
-        print 'Executing %s:%s\n' % (mod.__name__, tc_class)
+        print('Executing '+mod.__name__+':'+tc_class)
         testcase = getattr(mod, tc_class)()
         testcase.setup()
         try:

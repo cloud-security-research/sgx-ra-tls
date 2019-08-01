@@ -9,11 +9,8 @@ epid-ubuntu-16.04:
     - ./build.sh sgxsdk
     - ./build.sh graphene
     - ./build.sh sgxlkl
-    - make tests
-    - python tests/regression.py tests/00_sgxsdk_server_client.py
-    - python tests/regression.py tests/00_graphene_server_client.py
-    - python tests/regression.py tests/00_sgxlkl_server_client.py
-    - python tests/regression.py tests/00_attester_challenger.py
+    - make -C apps/secret-provisioning-example
+    - make check
 
 epid-ubuntu-18.04:
   tags:
@@ -26,11 +23,8 @@ epid-ubuntu-18.04:
     - ./build.sh sgxsdk
     - ./build.sh graphene
     - ./build.sh sgxlkl
-    - make tests
-    - python tests/regression.py tests/00_sgxsdk_server_client.py
-    - python tests/regression.py tests/00_graphene_server_client.py
-    - python tests/regression.py tests/00_sgxlkl_server_client.py
-    - python tests/regression.py tests/00_attester_challenger.py
+    - make -C apps/secret-provisioning-example
+    - make check
 
 ecdsa-ubuntu-16.04:
   tags:
@@ -44,7 +38,7 @@ ecdsa-ubuntu-16.04:
     - ECDSA=1 make wolfssl-ra-attester
     - ECDSA=1 make wolfssl-ra-challenger
     - make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample
-    - python tests/regression.py tests/00_ecdsa_attester_challenger.py
+    - ECDSA=1 make check
 
 ecdsa-ubuntu-18.04:
   tags:
@@ -58,4 +52,4 @@ ecdsa-ubuntu-18.04:
     - ECDSA=1 make wolfssl-ra-attester
     - ECDSA=1 make wolfssl-ra-challenger
     - make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample
-    - python tests/regression.py tests/00_ecdsa_attester_challenger.py
+    - ECDSA=1 make check

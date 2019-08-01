@@ -1,4 +1,4 @@
-# Software dependencies to build/run RA-TLS.
+# Software dependencies to build/run RA-TLS on Ubuntu 16.04.
 
 FROM ubuntu:16.04
 # FROM sconecuratedimages/crosscompilers:releasecandidate
@@ -6,8 +6,22 @@ FROM ubuntu:16.04
 # RUN sed -i 's/security\./old-releases\./g' /etc/apt/sources.list && sed -i 's/archive\./old-releases\./g' /etc/apt/sources.list
 
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends clang-6.0 coreutils git wget openssh-client build-essential cmake libssl-dev libprotoc-dev protobuf-compiler libprotobuf-dev libprotobuf-c-dev protobuf-c-compiler autoconf libtool ca-certificates automake pkgconf vim-common
-RUN ln -s /usr/bin/clang++-6.0 /usr/bin/clang++ && ln -s /usr/bin/clang-6.0 /usr/bin/clang
+RUN apt-get install -y --no-install-recommends clang-6.0 coreutils git wget \
+    openssh-client build-essential cmake libssl-dev libprotoc-dev \
+    protobuf-compiler libprotobuf-dev libprotobuf-c-dev protobuf-c-compiler \
+    autoconf libtool ca-certificates automake pkgconf vim-common unzip
+
+# Required for apps/redis-secrect-provisioning-example
+RUN apt-get install -y libnss-myhostname libnss-mdns
+# Required by package version of redis-server
+RUN apt-get install -y libjemalloc1
+
+RUN ln -s /usr/bin/clang++-6.0 /usr/bin/clang++ && \
+    ln -s /usr/bin/clang-6.0 /usr/bin/clang
+
+# Required for scripts in tests/
+RUN apt-get install -y python3
+
 # Graphene requirements
 RUN apt-get install -y --no-install-recommends python gawk python-protobuf python-crypto socat
 

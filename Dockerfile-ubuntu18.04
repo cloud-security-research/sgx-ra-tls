@@ -7,20 +7,22 @@ RUN apt-get install -y --no-install-recommends gcc-5 libc6-dev g++ make dpkg-dev
     clang-6.0 coreutils git wget openssh-client cmake libssl-dev \
     libprotoc-dev protobuf-compiler libprotobuf-dev libprotobuf-c-dev \
     protobuf-c-compiler autoconf libtool ca-certificates automake pkgconf \
-    rename vim-common
+    unzip rename vim-common
 
 RUN ln -s /usr/bin/clang++-6.0 /usr/bin/clang++ && \
     ln -s /usr/bin/clang-6.0 /usr/bin/clang
 
+# Required for apps/redis-secrect-provisioning-example
+RUN apt-get install -y libnss-myhostname libnss-mdns
+
+# Required by package version of redis-server
+RUN apt-get install -y libjemalloc1
+
+# Required for scripts in tests/
+RUN apt-get install -y python3
+
 # Graphene requirements
 RUN apt-get install -y --no-install-recommends python gawk python-protobuf python-crypto socat
-
-# Install kernel headers so that Graphene can build the kernel module
-# inside the container. The driver built inside the container is not
-# actually used. The particular kernel version should not matter - just
-# install a recent version.
-
-RUN apt-get install -y --no-install-recommends linux-headers-5.0.0-27-generic
 
 # SCONE requirements
 RUN apt-get install -y --no-install-recommends libprotoc-dev pkgconf protobuf-compiler # to compile libprotobuf-c
