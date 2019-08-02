@@ -15,8 +15,6 @@
 
 #include "mbedtls-ra-attester.h"
 
-void grab_secret_from_provisioning_service(void) __attribute__((constructor));
-
 unsigned char secret[1024];
 
 struct ra_tls_options my_ra_tls_options = {
@@ -46,7 +44,8 @@ void ssl_read_exactly_n_bytes(mbedtls_ssl_context* ssl, unsigned char* p, int le
     assert(bytes_read == len);
 }
 
-void grab_secret_from_provisioning_service(void) {
+int grab_secret_from_provisioning_service(int argc, char **argv, char **env) {
+    (void)env;
 
     /* Connect to verifier / secret provisioning service. */
     mbedtls_net_context srv_fd;
@@ -112,8 +111,22 @@ void grab_secret_from_provisioning_service(void) {
     ssl_read_exactly_n_bytes(&ssl, (unsigned char*) secret, secret_size);
     
     printf(" > Provisioning successful. Secret is: %s\n", (char*)secret);
+
+    /* Patch --requirepass command-line argument to point to obtained secret. */
+    const char* requirepass = "--requirepass";
+    for (int i = 0; i < argc; i++) {
+        if ((strncmp(requirepass, argv[i], strlen(requirepass)) == 0) && (i + 1 < argc)) {
+            printf(" > Found `%s <dummypass>`. Overwriting as `%s %s`\n",
+                   requirepass, requirepass, (char*)secret);
+            argv[i + 1] = (char*) secret;
+        }
+    }
+
+    return 0;
 }
 
-char* get_provisioned_password(void) {
-    return (char*) secret;
-}
+/* We rely on Glibc behavior that grab_secret_from_provisioning_service() is called during
+ * initialization with access to exactly the same stack frame as main(). This allows to
+ * intercept argc, argv, and envp, and modify argv for our secret-provisioning purpose. */
+__attribute__((section(".init_array")))
+void *grab_secret_from_provisioning_service_constructor = &grab_secret_from_provisioning_service;

@@ -47,8 +47,8 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <body>
 <h1 id="description">Description</h1>
 <p>This project demonstrates how to provision an SGX application with secrets after remotely attesting it. The application in our case is Redis. A Redis server can be configured to require clients to authenticate/authorize with a password before accepting any commands from them. The password is usually provided either in a configuration file or as a command line option. This repository demonstrates how to provision the password only after attesting the Redis server.</p>
-<p>Redis server runs inside an SGX enclave with the help of Graphene. After instantiating the enclave, but before the Redis server runs, we execute additional code to remotely attest to a verifier. The verifier has the expected identity of the Redis server hard-coded and only releases the password after successfully attesting the Redis server.</p>
-<p>The Redis server is slightly modified to call a function to obtain the provisioned password during its initialization.</p>
+<p>Redis server runs inside an SGX enclave with the help of Graphene. After instantiating the enclave, but before the Redis server runs, we execute additional code (captured in the <code>redis-server-provision-secret.so</code> helper library and LDPRELOADed in the Redis manifest) to remotely attest to a verifier. The verifier has the expected identity of the Redis server hard-coded and only releases the password after successfully attesting the Redis server.</p>
+<p>The Redis server is completely unmodified. This project assumes that Redis is called with <code>--requirepass &lt;dummystring&gt;</code>. After the helper library receives the password from the secret provisioning service, it overwrites this command-line argument with <code>--requirepass &lt;received-secret&gt;</code>.</p>
 <p>The Redis server communicates securely with the secret provisioning service over mutually authenticated TLS. The provisioning service uses a standard (self-signed) <a href="verifier-crt.pem">X.509 certificate</a> as its identity. The Redis server uses an RA-TLS certificate to authenticate to the provisioning service. The provisioning service has the Redis server's SGX identity backed in during build time (cf. <a href="redis_server_sgx_identity.c" class="uri">redis_server_sgx_identity.c</a>). The provisioning service verifies the SGX identity information in the RA-TLS certificate before sending the secret to the remote party.</p>
 <pre><code>                   X.509     TLS    RA-TLS          plain text
 Secret Provisioning   &lt;--------------&gt;   Redis    &lt;----------&gt;  Client
@@ -62,18 +62,14 @@ Service (verifier)</code></pre>
 <div class="sourceCode"><pre class="sourceCode bash"><code class="sourceCode bash"><span class="kw">./verifier</span></code></pre></div>
 <p>Start the Redis server</p>
 <div class="sourceCode"><pre class="sourceCode bash"><code class="sourceCode bash"><span class="kw">make</span> redis-server-run</code></pre></div>
-<p>The server will print a message after the verifier successfully released the password.</p>
+<p>The server will print couple messages after the verifier successfully released the password.</p>
 <p>Connect to the Redis server as a client</p>
 <div class="sourceCode"><pre class="sourceCode bash"><code class="sourceCode bash"><span class="kw">deps/redis/src/redis-cli</span></code></pre></div>
 <p>Type &quot;auth [password]&quot; to authenticate to the server.</p>
 <h1 id="notes">Notes</h1>
 <h2 id="on-weak-vs-strong-symbols-dlsym-and-ld_preload">On weak vs strong symbols, dlsym and LD_PRELOAD</h2>
-<p>We initially hoped to not have to modify Redis and instead overload and existing function via LD_PRELOAD. However, LD_PRELOAD of course only works if the symbol you are trying to override is resolved dynamically which Redis' internal functions are not. LD_PRELOAD is only able to overwrite functions residing in shared libraries.</p>
-<h2 id="redis-patch">Redis patch</h2>
-<p>The current implementation patches Redis to inject the password. There are at least two alternatives to achieve the same outcome without modifying Redis:</p>
-<ol>
-<li>Create or modify the Redis configuration file (redis.conf) with the password.</li>
-<li>Modify argv through a constructor in the shared library (cf. <a href="https://sourceware.org/ml/libc-help/2009-11/msg00006.html" class="uri">https://sourceware.org/ml/libc-help/2009-11/msg00006.html</a>). Redis would need to be invoked with &quot;--password dummy&quot;, since this hack will replace &quot;dummy&quot; with the remotely provisioned password.</li>
-</ol>
+<p>For transparent provisioning of the secret password to Redis, we initially hoped to overload existing functions in Redis via LD_PRELOAD. However, LD_PRELOAD of course only works if the symbol you are trying to override is resolved dynamically which Redis' internal functions are not. LD_PRELOAD is only able to overwrite functions residing in shared libraries.</p>
+<h2 id="patching-command-line-arguments-of-redis">Patching command-line arguments of Redis</h2>
+<p>The current implementation patches command-line argument <code>--requirepass &lt;dummystring&gt;</code> to Redis to inject the secret password. It relies on a clever trick to modify argv through a constructor in the shared library (cf. <a href="https://sourceware.org/ml/libc-help/2009-11/msg00006.html" class="uri">https://sourceware.org/ml/libc-help/2009-11/msg00006.html</a>). Alternatively, one could create or modify the Redis configuration file (redis.conf) with the password.</p>
 </body>
 </html>

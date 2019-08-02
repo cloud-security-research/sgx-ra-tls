@@ -50,7 +50,6 @@ redis/Makefile:
 	wget https://github.com/antirez/redis/archive/5.0.0.zip -O redis-5.0.0.zip
 	unzip redis-5.0.0.zip
 	ln -s redis-5.0.0 redis
-	cd redis && patch -p1 < ../00_redis.patch
 
 redis/src/redis-server: redis/Makefile
 	cd redis && $(MAKE) noopt
@@ -91,7 +90,7 @@ redis-server-provision-secret.so: ../../mbedtls/libnonsdk-ra-attester.a redis-se
 
 .PHONY=redis-server-run
 redis-server-run: ../../deps/graphene/Runtime/redis-server-provision-secret.so redis-server.token
-	$(GRAPHENEDIR)/Runtime/pal-Linux-SGX ./redis-server.manifest.sgx --save "" --protected-mode no
+	$(GRAPHENEDIR)/Runtime/pal-Linux-SGX ./redis-server.manifest.sgx --save "" --protected-mode no --requirepass XXXXX
 
 .PHONY=redis-server-clean
 redis-server-clean:
