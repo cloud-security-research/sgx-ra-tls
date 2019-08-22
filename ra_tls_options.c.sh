@@ -13,12 +13,15 @@ if ( [[ ! -z "$SPID" ]] && [[ -z "$EPID_SUBSCRIPTION_KEY" ]] ) || \
     exit 1
 fi
 
+# the SPID may be 16 bytes long, but sgx_spid_t only takes 8 bytes
+SPID=$(echo $SPID | cut -c1-16)
+
 cat <<HEREDOC
 #include "ra-attester.h"
 
 struct ra_tls_options my_ra_tls_options = {
     // SPID format is "0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00"
-    .spid = {{$SPID}},
+    .spid = {{"$SPID"}},
     .quote_type = SGX_UNLINKABLE_SIGNATURE,
     .ias_server = "api.trustedservices.intel.com/sgx/dev",
     // EPID_SUBSCRIPTION_KEY format is "012345679abcdef012345679abcdef"
