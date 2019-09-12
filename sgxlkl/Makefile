@@ -1,9 +1,9 @@
-.PHONY=all
+.PHONY: all
 all:
 	$(MAKE) sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img
 	$(MAKE) sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img
 
-.PHONY=sgx-lkl
+.PHONY: sgx-lkl
 sgx-lkl:
 	[ ! -d $@ ] && git clone https://github.com/lsds/sgx-lkl.git || true
 	cd sgx-lkl && git checkout 2c0aa8a41178637ac8f4dabd8f7f02a5b47eed90
@@ -28,7 +28,7 @@ INCLUDES=-I.. -Ilocal/include -I/opt/intel/sgxsdk/include \
 
 MUSLCC=$(abspath sgx-lkl/build/host-musl/bin/musl-gcc)
 
-.PHONY=deps
+.PHONY: deps
 deps: deps/zlib deps/curl deps/protobuf-c deps/wolfssl
 
 deps/zlib: | sgx-lkl
@@ -85,17 +85,17 @@ sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img: ldpreload.so sgx-lkl/apps/http
 ../sgxlkl-wolfssl-ssl-server: | sgx-lkl deps
 	$(MAKE) -C .. sgxlkl-wolfssl-ssl-server
 
-.PHONY=clean
+.PHONY: clean
 clean:
 	$(MAKE) -C sgx-lkl
 
-.PHONY=distclean
+.PHONY: distclean
 distclean:
 	$(RM) ldpreload.so
 	$(RM) -r sgx-lkl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
 
 EXTERNAL_IFACE ?= eth0
-.PHONY=up-sgxlkl-network
+.PHONY: up-sgxlkl-network
 up-sgxlkl-network:
 	sudo ip tuntap add dev sgxlkl_tap0 mode tap user `whoami`
 	sudo ip link set dev sgxlkl_tap0 up
@@ -105,7 +105,7 @@ up-sgxlkl-network:
 	sudo iptables -t nat -I POSTROUTING -o $(EXTERNAL_IFACE) -j MASQUERADE
 	socat -t10 TCP-LISTEN:1234,bind=10.0.1.254,reuseaddr,fork,range=10.0.1.0/8 UNIX-CLIENT:/var/run/aesmd/aesm.socket &
 
-.PHONY=down-sgxlkl-network
+.PHONY: down-sgxlkl-network
 down-sgxlkl-network:
 	sudo iptables -t nat -D POSTROUTING -o $(EXTERNAL_IFACE) -j MASQUERADE
 	sudo iptables -D FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
@@ -113,10 +113,10 @@ down-sgxlkl-network:
 	sudo ip tuntap del dev sgxlkl_tap0 mode tap
 	pkill -f TCP-LISTEN:1234
 
-.PHONY=run-https-server
+.PHONY: run-https-server
 run-https-server: sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img
 	LD_PRELOAD=/ldpreload.so SGXLKL_TAP=sgxlkl_tap0 RATLS_AESMD_IP=10.0.1.254 SGXLKL_HEAP=268435456 SGXLKL_KEY=$(abspath sgx-lkl/build/config/enclave_debug.key ) sgx-lkl/build/sgx-lkl-run sgx-lkl/apps/https-server/sgxlkl-miniroot-fs.img /usr/bin/python /https-server.py
 
-.PHONY=run-wolfssl-server
+.PHONY: run-wolfssl-server
 run-wolfssl-server: sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img
 	SGXLKL_TAP=sgxlkl_tap0 SGXLKL_VERBOSE=1 RATLS_AESMD_IP=10.0.1.254 sgx-lkl/build/sgx-lkl-run sgx-lkl/apps/ratls/sgxlkl-miniroot-fs.img /sgxlkl-wolfssl-ssl-server

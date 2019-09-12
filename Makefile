@@ -29,7 +29,7 @@ LIBS=mbedtls/libra-attester.a \
 	openssl/libra-challenger.a \
 	openssl/libnonsdk-ra-attester.a
 
-.PHONY=all
+.PHONY: all
 all: $(LIBS)
 
 WOLFSSL_CLIENT_LIBS=-l:libra-challenger.a -l:libwolfssl.a -lm
@@ -187,7 +187,7 @@ endif
 %.html: %.md
 	pandoc --from markdown_github --to html --standalone $< --output $@
 
-.PHONY=html
+.PHONY: html
 html: README.html README-ECDSA.html
 
 SCONE_SSL_SERVER_INCLUDES=-I. -I$(SGX_SDK)/include -ISCONE/deps/local/include \
@@ -296,7 +296,7 @@ wolfssl-ra-challenger: tests/ra-challenger.c wolfssl/libra-challenger.a
 mbedtls-ra-challenger: tests/ra-challenger.c mbedtls/libra-challenger.a
 	$(CC) $(CFLAGS) $^ -o $@ -Ldeps/local/lib -l:libmbedx509.a -l:libmbedcrypto.a -lm
 
-.PHONY=deps
+.PHONY: deps
 deps: deps/linux-sgx deps/local/lib/libcurl-openssl.a deps/local/lib/libcurl-wolfssl.a deps/local/lib/libcurl-mbedtls.a deps/local/lib/libz.a deps/local/lib/libprotobuf-c.a
 ifndef ECDSA
 deps: deps/local/lib/libwolfssl.sgx.static.lib.a
@@ -378,7 +378,7 @@ deps/local/lib/libmbedtls.a: deps/mbedtls/CMakeLists.txt
 	$(MAKE) -C deps/mbedtls
 	cd deps/mbedtls && cmake -D CMAKE_INSTALL_PREFIX=$(shell readlink -f deps/local) -P cmake_install.cmake
 
-.PHONY=mrproper-mbedtls
+.PHONY: mrproper-mbedtls
 mrproper-mbedtls:
 	$(RM) -rf deps/mbedtls deps/local/lib/libmbedtls.a deps/local/lib/libmbedcrypto.a deps/local/lib/libmbedx509.a
 
@@ -520,11 +520,11 @@ KERNEL_VERSION=$(shell uname -r)
 Dockerfile: Dockerfile.template
 	sed 's/\$$KERNEL_VERSION/$(KERNEL_VERSION)/' $^ > $@
 
-.PHONY=docker-image
+.PHONY: docker-image
 docker-image: Dockerfile
 	docker build -t ratls -f $^ .
 
-.PHONY=tests
+.PHONY: tests
 ifndef ECDSA
 tests: openssl-ra-attester mbedtls-ra-attester
 endif
