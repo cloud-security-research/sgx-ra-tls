@@ -9,10 +9,16 @@ SGX_DCAP?=deps/SGXDataCenterAttestationPrimitives/
 
 SGX_DCAP_INC=-I$(SGX_DCAP)/QuoteGeneration/quote_wrapper/common/inc -I$(SGX_DCAP)/QuoteGeneration/pce_wrapper/inc -I$(SGX_DCAP)/QuoteVerification/Src/AttestationLibrary/include
 
-CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include $(SGX_DCAP_INC) -fPIC
+CFLAGS+=-std=gnu99 -I. -I$(SGX_SDK)/include -Ideps/local/include $(SGX_DCAP_INC)
 CFLAGSERRORS=-Wall -Wextra -Wwrite-strings -Wlogical-op -Wshadow -Werror
 CFLAGS+=$(CFLAGSERRORS) -g -O0 -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_CERT_EXT # -DDEBUG -DDYNAMIC_RSA
 CFLAGS+=-DSGX_GROUP_OUT_OF_DATE
+
+# On Ubuntu 18.04 executables are built as position independent
+# executables (PIE) by default. Position independent executables give
+# Graphene trouble. Once this is fixed, we can potentially remove this
+# link flag again.
+LDFLAGS_GRAPHENE_QUIRKS=-no-pie
 
 ifdef ECDSA
 CFLAGS+=-DRATLS_ECDSA
@@ -44,7 +50,7 @@ ra_tls_options.c: ra_tls_options.c.sh
 	bash $^ > $@
 
 wolfssl-client-mutual: deps/wolfssl-examples/tls/client-tls.c ra_tls_options.c wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
-	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS) $(SGX_DCAP_LIB)
+	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) $(LDFLAGS_GRAPHENE_QUIRKS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS) $(SGX_DCAP_LIB)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -64,6 +70,8 @@ wolfssl:
 
 openssl:
 	mkdir -p $@
+
+mbedtls-ra-attester.o mbedtls-ra-challenger.o ias-ra-mbedtls.o: deps/local/lib/libmbedtls.a
 
 mbedtls/libra-challenger.a : mbedtls ra.o mbedtls-ra-challenger.o ra-challenger.o ias_sign_ca_cert.o
 	$(AR) rcs $@ $(filter %.o, $^)
@@ -147,7 +155,7 @@ MBEDTLS_SSL_SERVER_SRC=deps/mbedtls/programs/ssl/ssl_server.c \
 MBEDTLS_SSL_SERVER_LIBS=-l:libcurl-mbedtls.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libprotobuf-c.a -l:libz.a
 
 mbedtls-ssl-server: $(MBEDTLS_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader
-	$(CC) $(MBEDTLS_SSL_SERVER_SRC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib/ $(MBEDTLS_SSL_SERVER_LIBS)
+	$(CC) $(MBEDTLS_SSL_SERVER_SRC) -o $@ $(CFLAGSERRORS) $(LDFLAGS_GRAPHENE_QUIRKS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib/ $(MBEDTLS_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -158,7 +166,7 @@ WOLFSSL_SSL_SERVER_SRC=deps/wolfssl-examples/tls/server-tls.c ra_tls_options.c
 WOLFSSL_SSL_SERVER_LIBS=-l:libcurl-wolfssl.a -l:libwolfssl.a -l:libprotobuf-c.a -l:libz.a -lm -ldl
 
 wolfssl-ssl-server: $(WOLFSSL_SSL_SERVER_SRC) ssl-server.manifest deps/graphene/Runtime/pal_loader wolfssl/libnonsdk-ra-attester.a
-	$(CC) -o $@ $(CFLAGSERRORS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib -L. -Lwolfssl $(WOLFSSL_SSL_SERVER_SRC) -l:libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
+	$(CC) -o $@ $(CFLAGSERRORS) $(LDFLAGS_GRAPHENE_QUIRKS) $(SSL_SERVER_INCLUDES) -Ldeps/local/lib -L. -Lwolfssl $(WOLFSSL_SSL_SERVER_SRC) -l:libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -168,7 +176,7 @@ ifdef ECDSA
 WOLFSSL_SSL_SERVER_LIBS+= -l:libQuoteVerification.so -ldl
 endif
 wolfssl-ssl-server-mutual: deps/wolfssl-examples/tls/server-tls.c ra_tls_options.c ssl-server.manifest deps/graphene/Runtime/pal_loader wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
-	$(CC) -o $@ $(CFLAGSERRORS) -DSGX_RATLS_MUTUAL $(SSL_SERVER_INCLUDES) $(filter %.c, $^) -Ldeps/local/lib $(SGX_DCAP_LIB) wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
+	$(CC) -o $@ $(CFLAGSERRORS) $(LDFLAGS_GRAPHENE_QUIRKS) -DSGX_RATLS_MUTUAL $(SSL_SERVER_INCLUDES) $(filter %.c, $^) -Ldeps/local/lib $(SGX_DCAP_LIB) wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a $(WOLFSSL_SSL_SERVER_LIBS)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
@@ -261,28 +269,28 @@ mrproper: clean
 .PHONY = all clean clients scone-server scone-wolfssl-ssl-server graphene-server sgxsdk-server mrproper
 
 openssl-ra-attester: tests/ra-attester.c openssl/libnonsdk-ra-attester.a ra_tls_options.c 
-	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
+	$(CC) $(CFLAGS) $(LDFLAGS_GRAPHENE_QUIRKS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-openssl.a -l:libssl.a -l:libcrypto.a -l:libprotobuf-c.a -lm -l:libz.a -ldl
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 endif
 
 wolfssl-ra-attester: tests/ra-attester.c wolfssl/libnonsdk-ra-attester.a ra_tls_options.c
-	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-wolfssl.a -l:libprotobuf-c.a -l:libwolfssl.a -lm -l:libz.a -ldl
+	$(CC) $(CFLAGS) $(LDFLAGS_GRAPHENE_QUIRKS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-wolfssl.a -l:libprotobuf-c.a -l:libwolfssl.a -lm -l:libz.a -ldl
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 endif
 
 mbedtls-ra-attester: tests/ra-attester.c mbedtls/libnonsdk-ra-attester.a ra_tls_options.c 
-	$(CC) $(CFLAGS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-mbedtls.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libz.a
+	$(CC) $(CFLAGS) $(LDFLAGS_GRAPHENE_QUIRKS) $^ -o $@ -Ideps/local/include -Ldeps/local/lib -l:libcurl-mbedtls.a -l:libprotobuf-c.a -l:libmbedx509.a -l:libmbedtls.a -l:libmbedcrypto.a -l:libz.a
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ra-attester.manifest
 ifndef ECDSA
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-get-token -output $@.token -sig $@.sig
 endif
 
 openssl-ra-challenger: tests/ra-challenger.c openssl/libra-challenger.a
-	$(CC) $(CFLAGS) -DOPENSSL $^ -o $@ -l:libcrypto.a -ldl
+	$(CC) $(CFLAGS) -DOPENSSL $^ -o $@ -Ldeps/local/lib -l:libcrypto.a -ldl
 
 WOLFSSL_RA_CHALLENGER_LIBS=-l:libwolfssl.a -lm
 ifdef ECDSA
@@ -305,7 +313,7 @@ endif
 deps/openssl/config:
 	cd deps && git clone https://github.com/openssl/openssl.git
 	cd deps/openssl && git checkout OpenSSL_1_0_2g
-	cd deps/openssl && ./config --prefix=$(shell readlink -f deps/local) no-shared -fPIC
+	cd deps/openssl && ./config --prefix=$(shell readlink -f deps/local) no-shared
 
 deps/local/lib/libcrypto.a: deps/openssl/config
 	cd deps/openssl && $(MAKE) && $(MAKE) -j1 install
@@ -341,7 +349,9 @@ endif
 
 deps/local/lib/libwolfssl.a: CFLAGS+= $(WOLFSSL_CFLAGS)
 deps/local/lib/libwolfssl.a: deps/wolfssl/configure
-	cd deps/wolfssl && CFLAGS="$(CFLAGS)" ./configure $(WOLFSSL_CONFIGURE_FLAGS)
+# Force the use of gcc-5. Later versions of gcc report errors on this version of wolfSSL.
+# TODO: Upgrade to more recent version of wolfSSL.
+	cd deps/wolfssl && CC=gcc-5 CFLAGS="$(CFLAGS)" ./configure $(WOLFSSL_CONFIGURE_FLAGS)
 	cd deps/wolfssl && $(MAKE) install
 
 # Ideally, deps/wolfssl/IDE/LINUX-SGX/libwolfssl.sgx.static.lib.a and
@@ -372,7 +382,7 @@ deps/mbedtls/CMakeLists.txt:
 	cd deps/mbedtls && patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
 	cd deps/mbedtls && patch -p1 < ../../mbedtls-ssl-server.patch
 	cd deps/mbedtls && patch -p1 < ../../mbedtls-client.patch
-	cd deps/mbedtls && cmake -DCMAKE_BUILD_TYPE=$(MBEDTLS_RELEASE_TYPE) -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$(CC) -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" .
+	cd deps/mbedtls && cmake -DCMAKE_BUILD_TYPE=$(MBEDTLS_RELEASE_TYPE) -DENABLE_PROGRAMS=off -DCMAKE_C_COMPILER=$(CC) -DCMAKE_C_FLAGS="-DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" .
 
 deps/local/lib/libmbedtls.a: deps/mbedtls/CMakeLists.txt
 	$(MAKE) -C deps/mbedtls
@@ -394,19 +404,19 @@ endif
 
 deps/local/lib/libcurl-wolfssl.a: deps/curl/configure deps/local/lib/libwolfssl.a
 	cp -a deps/curl deps/curl-wolfssl
-	cd deps/curl-wolfssl && CFLAGS="-fPIC" ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
+	cd deps/curl-wolfssl && ./configure $(CURL_CONFFLAGS) --without-ssl --with-cyassl=$(shell readlink -f deps/local)
 	cd deps/curl-wolfssl && $(MAKE)
 	cp deps/curl-wolfssl/lib/.libs/libcurl.a deps/local/lib/libcurl-wolfssl.a
 
 deps/local/lib/libcurl-openssl.a: deps/curl/configure deps/local/lib/libcrypto.a
 	cp -a deps/curl deps/curl-openssl
-	cd deps/curl-openssl && CFLAGS="-fPIC" LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
+	cd deps/curl-openssl && LIBS="-ldl -lpthread" ./configure $(CURL_CONFFLAGS) --with-ssl=$(shell readlink -f deps/local)
 	cd deps/curl-openssl && $(MAKE) && $(MAKE) install
 	rename 's/libcurl/libcurl-openssl/' deps/local/lib/libcurl.*
 
 deps/local/lib/libcurl-mbedtls.a: deps/curl/configure deps/local/lib/libmbedtls.a
 	cp -a deps/curl deps/curl-mbedtls
-	cd deps/curl-mbedtls && CFLAGS="-fPIC" LIBS="" ./configure $(CURL_CONFFLAGS) --without-ssl --with-mbedtls=$(shell readlink -f deps/local)
+	cd deps/curl-mbedtls && LIBS="" ./configure $(CURL_CONFFLAGS) --without-ssl --with-mbedtls=$(shell readlink -f deps/local)
 	cd deps/curl-mbedtls && $(MAKE) && $(MAKE) install
 	rename 's/libcurl/libcurl-mbedtls/' deps/local/lib/libcurl.*
 
@@ -415,7 +425,7 @@ deps/zlib/configure:
 
 deps/local/lib/libz.a: deps/zlib/configure
 	mkdir -p deps
-	cd deps/zlib && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --static
+	cd deps/zlib && CFLAGS="-O2" ./configure --prefix=$(shell readlink -f deps/local) --static
 	cd deps/zlib && $(MAKE) install
 
 deps/protobuf-c/configure:
@@ -423,7 +433,7 @@ deps/protobuf-c/configure:
 	cd deps/protobuf-c && ./autogen.sh
 
 deps/local/lib/libprotobuf-c.a: deps/protobuf-c/configure
-	cd deps/protobuf-c && CFLAGS="-fPIC -O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
+	cd deps/protobuf-c && CFLAGS="-O2" ./configure --prefix=$(shell readlink -f deps/local) --disable-shared
 	cd deps/protobuf-c && $(MAKE) protobuf-c/libprotobuf-c.la
 	mkdir -p deps/local/lib && mkdir -p deps/local/include/protobuf-c
 	cp deps/protobuf-c/protobuf-c/.libs/libprotobuf-c.a deps/local/lib
@@ -492,17 +502,21 @@ ifdef ECDSA
 endif
 
 deps/graphene/Runtime/pal-Linux-SGX: deps/graphene/Makefile
-# The Graphene build process requires two inputs: (i) SGX driver directory, (ii) driver version.
+# The link-intel-driver.py script generates the isgx_driver.h
+# file. Invoking it manually prevents the Graphene SGX driver from
+# being built automatically (which may be undesirable when running in
+# a Docker container, for example.)
+	cd deps/graphene/Pal/src/host/Linux-SGX/sgx-driver && ISGX_DRIVER_PATH="$(shell readlink -f deps/linux-sgx-driver)" ISGX_DRIVER_VERSION=2.4 ./link-intel-driver.py
 # Unfortunately, cannot use make -j`nproc` with Graphene's build process :(
-	cd deps/graphene && printf "$(shell readlink -f deps/linux-sgx-driver)\n2.4\n" | $(MAKE) -j1 SGX=1
+	cd deps/graphene && $(MAKE) -j1 SGX=1
 
 # I prefer to have all dynamic libraries in one directory. This
 # reduces the effort in the Graphene-SGX manifest file.
 	cd deps/graphene && ln -s /usr/lib/x86_64-linux-gnu/libprotobuf-c.so.1 Runtime/
 	cd deps/graphene && ln -s /usr/lib/libsgx_uae_service.so Runtime/
-	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libcrypto.so.1.0.0 Runtime/
+	cd deps/graphene && ln -s /usr/lib/x86_64-linux-gnu/libcrypto.so Runtime/libcrypto.so.1.0.0
 	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libz.so.1 Runtime/
-	cd deps/graphene && ln -s /lib/x86_64-linux-gnu/libssl.so.1.0.0 Runtime/
+	cd deps/graphene && ln -s /usr/lib/x86_64-linux-gnu/libssl.so Runtime/libssl.so.1.0.0
 
 ecdsa-attestation-collateral.c:
 	curl -o qe-identity.json "https://api.trustedservices.intel.com/sgx/certification/v1/qe/identity"
@@ -514,11 +528,6 @@ ecdsa-attestation-collateral.c:
 
 ecdsa-attestation-collateral.h: ecdsa-attestation-collateral.c
 	cat $^ | sed 's/ = .*;/;/' | sed '/^  /d' | sed 's/ = {/;/' | sed '/^};$$/d' | sed 's/^/extern /' > $@
-
-KERNEL_VERSION=$(shell uname -r)
-
-Dockerfile: Dockerfile.template
-	sed 's/\$$KERNEL_VERSION/$(KERNEL_VERSION)/' $^ > $@
 
 .PHONY: docker-image
 docker-image: Dockerfile
