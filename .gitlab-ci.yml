@@ -1,5 +1,5 @@
 test-epid:
-  image: ratls:2.4
+  image: ratls-ubuntu16.04
   only:
     - web
     - schedules
@@ -17,7 +17,7 @@ test-ecdsa:
   tags:
     - sgx
     - sgx-ecdsa
-  image: ratls:2.4
+  image: ratls-ubuntu16.04
   only:
     - web
     - schedules
