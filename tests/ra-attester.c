@@ -22,6 +22,10 @@ static void write_buffer(const unsigned char* buf,
     close(fd);
 }
 
+static void usage(char* argv[]) {
+    fprintf(stderr, "Usage: %s [epid|ecdsa]\n", argv[0]);
+}
+
 int main(int argc, char* argv[]) {
     (void) argc;
     (void) argv;
@@ -30,6 +34,11 @@ int main(int argc, char* argv[]) {
     uint8_t der_crt[4*4096];
     int32_t der_key_len = sizeof(der_key);
     int32_t der_crt_len = sizeof(der_crt);
+
+    if (argc < 2) {
+        usage(argv);
+        return 1;
+    }
     
     if (0 == strcmp(argv[1], "epid")) {
         create_key_and_x509(der_key, &der_key_len,
@@ -44,7 +53,7 @@ int main(int argc, char* argv[]) {
         assert(0 && "not supported");
 #endif
     } else {
-        fprintf(stderr, "Usage: %s [epid|ecdsa]\n", argv[0]);
+        usage(argv);
         return 1;
     }
 
