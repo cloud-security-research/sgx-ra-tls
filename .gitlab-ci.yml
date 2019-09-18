@@ -1,4 +1,6 @@
 epid-ubuntu-16.04:
+  tags:
+    - sgx
   image: ratls-ubuntu16.04
   only:
     - web
@@ -14,6 +16,8 @@ epid-ubuntu-16.04:
     - python tests/regression.py tests/00_attester_challenger.py
 
 epid-ubuntu-18.04:
+  tags:
+    - sgx
   image: ratls-ubuntu18.04
   only:
     - web
@@ -30,7 +34,6 @@ epid-ubuntu-18.04:
 
 ecdsa-ubuntu-16.04:
   tags:
-    - sgx
     - sgx-ecdsa
   image: ratls-ubuntu16.04
   only:
@@ -45,7 +48,6 @@ ecdsa-ubuntu-16.04:
 
 ecdsa-ubuntu-18.04:
   tags:
-    - sgx
     - sgx-ecdsa
   image: ratls-ubuntu18.04
   only:
