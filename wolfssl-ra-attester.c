@@ -32,10 +32,11 @@
 #include "ecdsa-sample-data/real/sample_data.h"
 #include "ecdsa-attestation-collateral.h"
 #include "curl_helper.h"
-#endif
-#include "ra_private.h"
 
 static const int FMSPC_SIZE_BYTES = 6;
+
+#endif
+#include "ra_private.h"
 
 /**
  * Caller must allocate memory for certificate.

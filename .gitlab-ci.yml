@@ -1,5 +1,7 @@
-test-epid:
-  image: ratls:2.4
+epid-ubuntu-16.04:
+  tags:
+    - sgx
+  image: ratls-ubuntu16.04
   only:
     - web
     - schedules
@@ -13,11 +15,41 @@ test-epid:
     - python tests/regression.py tests/00_sgxlkl_server_client.py
     - python tests/regression.py tests/00_attester_challenger.py
 
-test-ecdsa:
+epid-ubuntu-18.04:
   tags:
     - sgx
+  image: ratls-ubuntu18.04
+  only:
+    - web
+    - schedules
+  script:
+    - ./build.sh sgxsdk
+    - ./build.sh graphene
+    - ./build.sh sgxlkl
+    - make tests
+    - python tests/regression.py tests/00_sgxsdk_server_client.py
+    - python tests/regression.py tests/00_graphene_server_client.py
+    - python tests/regression.py tests/00_sgxlkl_server_client.py
+    - python tests/regression.py tests/00_attester_challenger.py
+
+ecdsa-ubuntu-16.04:
+  tags:
     - sgx-ecdsa
-  image: ratls:2.4
+  image: ratls-ubuntu16.04
+  only:
+    - web
+    - schedules
+  script:
+    - ECDSA=1 ./build.sh graphene
+    - ECDSA=1 make wolfssl-ra-attester
+    - ECDSA=1 make wolfssl-ra-challenger
+    - make -C deps/SGXDataCenterAttestationPrimitives/SampleCode/QuoteServiceSample
+    - python tests/regression.py tests/00_ecdsa_attester_challenger.py
+
+ecdsa-ubuntu-18.04:
+  tags:
+    - sgx-ecdsa
+  image: ratls-ubuntu18.04
   only:
     - web
     - schedules

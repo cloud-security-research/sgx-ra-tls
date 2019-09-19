@@ -11,13 +11,6 @@ RUN ln -s /usr/bin/clang++-6.0 /usr/bin/clang++ && ln -s /usr/bin/clang-6.0 /usr
 # Graphene requirements
 RUN apt-get install -y --no-install-recommends python gawk python-protobuf python-crypto socat
 
-# Install kernel headers so that Graphene can build the kernel module
-# inside the container. The driver built inside the container is not
-# actually used. The particular kernel version should not matter - just
-# install a recent version.
-
-RUN apt-get install -y --no-install-recommends linux-headers-$KERNEL_VERSION
-
 # SCONE requirements
 RUN apt-get install -y --no-install-recommends libprotoc-dev pkgconf protobuf-compiler # to compile libprotobuf-c
 # SGX-LKL

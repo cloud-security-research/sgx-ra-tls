@@ -42,21 +42,21 @@ pushd deps
 # clients. We do not use their package versions since we need them to
 # be compiled with specific flags.
 
-if [[ ! -d mbedtls ]] ; then
-    git clone https://github.com/ARMmbed/mbedtls.git
-    pushd mbedtls
-    git checkout mbedtls-2.5.1
-    # Add  -DCMAKE_BUILD_TYPE=Debug for Debug
-    patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
-    patch -p1 < ../../mbedtls-ssl-server.patch
-    patch -p1 < ../../mbedtls-client.patch
-    RELEASE_TYPE=Release
-    [[ "$DEBUG" == "1" ]] && RELEASE_TYPE=Debug
-    cmake -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$CC -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
-    make -j`nproc` || exit 1
-    cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
-    popd
-fi
+# if [[ ! -d mbedtls ]] ; then
+#     git clone https://github.com/ARMmbed/mbedtls.git
+#     pushd mbedtls
+#     git checkout mbedtls-2.5.1
+#     # Add  -DCMAKE_BUILD_TYPE=Debug for Debug
+#     patch -p1 < ../../mbedtls-enlarge-cert-write-buffer.patch
+#     patch -p1 < ../../mbedtls-ssl-server.patch
+#     patch -p1 < ../../mbedtls-client.patch
+#     RELEASE_TYPE=Release
+#     [[ "$DEBUG" == "1" ]] && RELEASE_TYPE=Debug
+#     cmake -DCMAKE_BUILD_TYPE=$RELEASE_TYPE -DENABLE_PROGRAMS=off -DCMAKE_CC_COMPILER=$CC -DCMAKE_C_FLAGS="-fPIC -DMBEDTLS_X509_ALLOW_UNSUPPORTED_CRITICAL_EXTENSION" . || exit 1
+#     make -j`nproc` || exit 1
+#     cmake -D CMAKE_INSTALL_PREFIX=$(readlink -f ../local) -P cmake_install.cmake || exit 1
+#     popd
+# fi
 
 popd # deps
 
