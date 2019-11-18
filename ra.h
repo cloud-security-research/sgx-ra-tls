@@ -28,7 +28,7 @@ typedef struct {
     uint32_t pck_sign_chain_len;
     /* JSON data as published by
        https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info */
-    uint8_t tcb_info[2048];
+    uint8_t tcb_info[4096];
     uint32_t tcb_info_len;
     /* Certificate chain in PEM format. */
     uint8_t tcb_sign_chain[4096];

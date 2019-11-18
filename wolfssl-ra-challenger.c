@@ -324,7 +324,7 @@ int ecdsa_verify_sgx_cert_extensions
     evidence.root_ca_crl[evidence.root_ca_crl_len] = '\0';
     assert(evidence.pck_crl_len < sizeof(evidence.pck_crl));
     evidence.pck_crl[evidence.pck_crl_len] = '\0';
-    
+
     const char* const crls[] = {(char*) evidence.root_ca_crl,
                                 (char*) evidence.pck_crl};
 
@@ -332,7 +332,7 @@ int ecdsa_verify_sgx_cert_extensions
     /* libQuoteVerification.so seems to link in OpenSSL dependencies statically?! */
 
     /* QVL expects zero terminated strings as input! */
-    
+
     int pck_crt_status = sgxAttestationVerifyPCKCertificate(pck_cert_chain, crls,
                                                             (char*) ecdsa_sample_data_real_trustedRootCaCert_pem);
 
@@ -347,20 +347,26 @@ int ecdsa_verify_sgx_cert_extensions
 
     assert(evidence.qe_identity_len < sizeof(evidence.qe_identity));
     evidence.qe_identity[evidence.qe_identity_len] = '\0';
-    
+
     int qe_identity_status = sgxAttestationVerifyQEIdentity((char*) evidence.qe_identity,
                                                             (char*) evidence.tcb_sign_chain,
                                                             (char*) evidence.root_ca_crl,
                                                             (char*) ecdsa_sample_data_real_trustedRootCaCert_pem);
-                                                            
+
     int quote_status = sgxAttestationVerifyQuote(evidence.quote, evidence.quote_len,
                                                  (char*) evidence.pck_crt,
                                                  (char*) evidence.pck_crl,
                                                  (char*) evidence.tcb_info,
                                                  (char*) evidence.qe_identity);
 
+    // TODO Update DCAP SDK to newest version.
+    if (quote_status == STATUS_TCB_OUT_OF_DATE) {
+        printf("!!! WARNING: quote verification resulted in STATUS_TCB_OUT_OF_DATE\n");
+        quote_status = 0;
+    }
+
     int report_user_data_status = verify_report_data_against_server_cert(&crt, (sgx_quote_t*) evidence.quote);
-    
+
     return pck_crt_status || tcb_info_status || qe_identity_status || quote_status || report_user_data_status;
 }
 #endif

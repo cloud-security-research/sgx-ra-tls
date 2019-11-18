@@ -1,3 +1,16 @@
+diff --git a/pre-commit.sh b/pre-commit.sh
+index cbac1b5..71c7976 100755
+--- a/pre-commit.sh
++++ b/pre-commit.sh
+@@ -3,6 +3,8 @@
+ #
+ # Our "pre-commit" hook.
+ 
++exit 0
++
+ # save current config
+ echo "\n\nSaving current config\n\n"
+ cp config.status tmp.status
 diff --git a/src/internal.c b/src/internal.c
 index a6989c4..9036910 100644
 --- a/src/internal.c
@@ -39,7 +52,7 @@ index a6989c4..9036910 100644
          #ifdef WOLFSSL_ASYNC_CRYPT
              if (ret == WC_PENDING_E) {
 diff --git a/wolfcrypt/src/asn.c b/wolfcrypt/src/asn.c
-index e234253..ba9df53 100644
+index e234253..5b1a026 100644
 --- a/wolfcrypt/src/asn.c
 +++ b/wolfcrypt/src/asn.c
 @@ -19,6 +19,7 @@
@@ -82,7 +95,7 @@ index e234253..ba9df53 100644
 +    byte    quote[2048];
 +    byte    pckCrt[2048];
 +    byte    pckSignChain[4096];
-+    byte    tcbInfo[2048];
++    byte    tcbInfo[4096];
 +    byte    tcbSignChain[4096];
 +    byte    qeIdentity[1024];
 +    byte    rootCaCrl[1024];
@@ -441,7 +454,7 @@ index 9c77120..3c922dd 100644
  
  #ifndef SESSION_TICKET_LEN
 diff --git a/wolfssl/wolfcrypt/asn_public.h b/wolfssl/wolfcrypt/asn_public.h
-index b730846..9c8128c 100644
+index b730846..870ffdb 100644
 --- a/wolfssl/wolfcrypt/asn_public.h
 +++ b/wolfssl/wolfcrypt/asn_public.h
 @@ -164,6 +164,32 @@ typedef struct Cert {
@@ -463,7 +476,7 @@ index b730846..9c8128c 100644
 +    int     pckCrtSz;
 +    byte    pckSignChain[4096];
 +    int     pckSignChainSz;
-+    byte    tcbInfo[2048];
++    byte    tcbInfo[4096];
 +    int     tcbInfoSz;
 +    byte    tcbSignChain[4096];
 +    int     tcbSignChainSz;
