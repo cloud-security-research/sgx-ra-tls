@@ -15,7 +15,7 @@ fs.mount.etc.type = chroot
 fs.mount.etc.path = /etc
 fs.mount.etc.uri = file:/etc
 
-sgx.enclave_size = 128M
+sgx.enclave_size = 256M
 sys.brk.size = 4M
 sys.stack.size = 4M
 
