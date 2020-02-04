@@ -1,9 +1,13 @@
 #define _GNU_SOURCE // for memmem()
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <curl/curl.h>
 
 #if defined(USE_OPENSSL)
@@ -163,40 +167,7 @@ void parse_response_header
     *signature_size = sig_end - sig_begin;
 }
 
-/**
- * @return Length of base64 encoded data including terminating NUL-byte.
- */
-static void base64_encode
-(
-    uint8_t *in,
-    uint32_t in_len,
-    uint8_t* out,
-    uint32_t* out_len /* in/out */
-)
-{
-    // + 1 to account for the terminating \0.
-    assert(*out_len >= (in_len + 3 - 1) / 3 * 4 + 1);
-    bzero(out, *out_len);
-    
-#if defined(USE_OPENSSL)
-        int ret = EVP_EncodeBlock(out, in, in_len);
-        // + 1 since EVP_EncodeBlock() returns length excluding the terminating \0.
-        assert((size_t) ret + 1 <= *out_len);
-        *out_len = ret + 1;
-#elif defined(USE_WOLFSSL)
-        int ret = Base64_Encode_NoNl(in, in_len, out, out_len);
-        assert(ret == 0);
-        // No need append terminating \0 since we memset() the whole
-        // buffer in the beginning.
-        *out_len += 1;
-#elif defined(USE_MBEDTLS)
-        size_t olen;
-        int ret = mbedtls_base64_encode(out, *out_len, &olen, in, in_len);
-        assert(ret == 0);
-        assert(olen <= UINT32_MAX);
-        *out_len = (uint32_t) olen;
-#endif
-}
+#define __UNUSED(x) ((void) x)
 
 /** Turns a binary quote into an attestation verification report.
 
@@ -210,53 +181,39 @@ void obtain_attestation_verification_report
     attestation_verification_report_t* attn_report
 )
 {
-    int ret;
-  
-    char url[512];
-    ret = snprintf(url, sizeof(url), "https://%s/attestation/v3/report",
-                   opts->ias_server);
-    assert(ret < (int) sizeof(url));
-    
-    char buf[128];
-    int rc = snprintf(buf, sizeof(buf), "Ocp-Apim-Subscription-Key: %.32s",
-                      opts->subscription_key);
-    assert(rc < (int) sizeof(buf));
+    __UNUSED(quote);
+    __UNUSED(quote_size);
+    __UNUSED(opts);
 
-    struct curl_slist *request_headers =
-        curl_slist_append(NULL, "Content-Type: application/json");
-    request_headers = curl_slist_append(request_headers, buf);
-        
-    const char json_template[] = "{\"isvEnclaveQuote\":\"%s\"}";
-    unsigned char quote_base64[quote_size * 2];
-    uint32_t quote_base64_len = sizeof(quote_base64);
-    char json[quote_size * 2];
+    char ias_report[10*1024];
+    int fd = open("/proc/sgx_attestation/ias_report", O_RDONLY);
+    if (fd < 0)
+        abort();
+    const ssize_t ias_report_len = read(fd, ias_report, sizeof(ias_report));
+    if (ias_report_len <= 0)
+        abort();
+    close(fd);
 
-    base64_encode((uint8_t*) quote, quote_size,
-                  quote_base64, &quote_base64_len);
+    char ias_header[10*1024];
+    fd = open("/proc/sgx_attestation/ias_header", O_RDONLY);
+    if (fd < 0)
+        abort();
+    const ssize_t ias_header_len = read(fd, ias_header, sizeof(ias_header));
+    if (ias_header_len <= 0)
+        abort();
+    close(fd);
 
-    snprintf(json, sizeof(json), json_template, quote_base64);
-
-    CURL *curl = curl_easy_init();
-    assert(curl != NULL);
-    struct buffer_and_size header = {(char*) malloc(1), 0};
-    struct buffer_and_size body = {(char*) malloc(1), 0};
-    http_get(curl, url, &header, &body, request_headers, json);
-        
-    parse_response_header(header.data, header.len,
+    parse_response_header(ias_header, ias_header_len,
                           attn_report->ias_report_signature,
                           sizeof(attn_report->ias_report_signature),
                           &attn_report->ias_report_signature_len);
 
-    assert(sizeof(attn_report->ias_report) >= body.len);
-    memcpy(attn_report->ias_report, body.data, body.len);
-    attn_report->ias_report_len = body.len;
+    assert(sizeof(attn_report->ias_report) >= (size_t) ias_report_len);
+    memcpy(attn_report->ias_report, ias_report, ias_report_len);
+    attn_report->ias_report_len = ias_report_len;
 
-    extract_certificates_from_response_header(curl,
-                                              header.data, header.len,
-                                              attn_report);
-    
+    CURL* curl = curl_easy_init();
+    extract_certificates_from_response_header(curl, ias_header, ias_header_len, attn_report);
+
     curl_easy_cleanup(curl);
-    free(header.data);
-    free(body.data);
-    curl_slist_free_all(request_headers);
 }

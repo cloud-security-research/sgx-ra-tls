@@ -45,6 +45,14 @@ LDLIBS=\
 
 secret-provisioning-service: ../../mbedtls/libra-challenger.a redis-server_sgx_identity.c show-secrets_sgx_identity.c
 
+manifest_rules = \
+	-e 's:\$$(RA_CLIENT_SPID):$(RA_CLIENT_SPID):g' \
+	-e 's:\$$(RA_CLIENT_KEY):$(RA_CLIENT_KEY):g' \
+	-e 's:\$$(RA_CLIENT_LINKABLE):$(if $(RA_CLIENT_LINKABLE),$(RA_CLIENT_LINKABLE),0):g'
+
+%.manifest: %.manifest.template
+	sed $(manifest_rules) $< > $@
+
 RATLS_GIT_URI?=https://github.com/cloud-security-research/sgx-ra-tls.git
 RATLS_COMMIT?=master
 ../../Makefile:
@@ -92,10 +100,7 @@ PROVISION_LDFLAGS=-shared
 	cd ../.. && $(MAKE) deps/local/lib/libcurl-mbedtls.a
 	cd ../.. && $(MAKE) mbedtls/libnonsdk-ra-attester.a
 
-../../ra_tls_options.c:
-	$(MAKE) -C $(dir $@) $(notdir $@)
-
-redis-server-grab-secret.so: ../../mbedtls/libnonsdk-ra-attester.a redis-server-grab-secret.c ../../ra_tls_options.c | secret-provisioning-service-crt.pem
+redis-server-grab-secret.so: ../../mbedtls/libnonsdk-ra-attester.a redis-server-grab-secret.c | secret-provisioning-service-crt.pem
 	$(CC) $(CFLAGS) -Iredis/src $^ -o $@ $(PROVISION_LDFLAGS) -fPIC $(PROVISION_LDLIBS)
 
 ../../deps/graphene/Runtime/pal-Linux-SGX: ../../Makefile
@@ -121,7 +126,7 @@ clean: redis-server-clean show-secrets-clean
 distclean: clean
 	$(RM) -rf redis-5.0.0 redis redis-5.0.0.zip
 
-show-secrets-grab-secret.so: show-secrets-grab-secret.c ../../ra_tls_options.c
+show-secrets-grab-secret.so: show-secrets-grab-secret.c
 	$(CC) $(CFLAGS) $(PROVISION_LDFLAGS) $^ -o $@ $(PROVISION_LDLIBS) -fPIC
 
 ../../deps/graphene/Runtime/show-secrets-grab-secret.so: show-secrets-grab-secret.so | ../../deps/graphene/Runtime/pal-Linux-SGX

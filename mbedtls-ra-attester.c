@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <sgx_uae_service.h>
-
 #include <mbedtls/certs.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>

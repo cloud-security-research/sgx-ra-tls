@@ -49,7 +49,7 @@ wolfssl-client: deps/wolfssl-examples/tls/client-tls.c wolfssl/libra-challenger.
 ra_tls_options.c: ra_tls_options.c.sh
 	bash $^ > $@
 
-wolfssl-client-mutual: deps/wolfssl-examples/tls/client-tls.c ra_tls_options.c wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a
+wolfssl-client-mutual: deps/wolfssl-examples/tls/client-tls.c ra_tls_options.c wolfssl/libra-challenger.a wolfssl/libnonsdk-ra-attester.a ssl-server.manifest
 	$(CC) -o $@ $(filter %.c, $^) $(CFLAGS) $(LDFLAGS_GRAPHENE_QUIRKS) -DSGX_RATLS_MUTUAL -Ldeps/local/lib $(filter %.a, $^) $(WOLFSSL_SSL_SERVER_LIBS) $(SGX_DCAP_LIB)
 	deps/graphene/Pal/src/host/Linux-SGX/signer/pal-sgx-sign -libpal deps/graphene/Runtime/libpal-Linux-SGX.so -key deps/graphene/Pal/src/host/Linux-SGX/signer/enclave-key.pem -output $@.manifest.sgx -exec $@ -manifest ssl-server.manifest
 ifndef ECDSA
@@ -552,3 +552,11 @@ ifeq ($(ECDSA),1)
 else
 	python3 tests/regression.py $(EPID_TEST_SUITE)
 endif
+
+manifest_rules = \
+	-e 's:\$$(RA_CLIENT_SPID):$(RA_CLIENT_SPID):g' \
+	-e 's:\$$(RA_CLIENT_KEY):$(RA_CLIENT_KEY):g' \
+	-e 's:\$$(RA_CLIENT_LINKABLE):$(if $(RA_CLIENT_LINKABLE),$(RA_CLIENT_LINKABLE),0):g'
+
+%.manifest: %.manifest.template
+	sed $(manifest_rules) $< > $@

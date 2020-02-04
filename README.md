@@ -1,5 +1,7 @@
 # Introduction
 
+NOTE: This branch requires the pseudo-file-based Graphene attestation API: https://github.com/thomasknauth/graphene/tree/attestation. Only the SSL servers have been adapted to work with the new interface.
+
 This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying [white paper](whitepaper.pdf) "Integrating Remote Attestation with Transport Layer Security" provides more details. RA-TLS supports [EPID](https://software.intel.com/sites/default/files/managed/57/0e/ww10-2016-sgx-provisioning-and-attestation-final.pdf) and [ECDSA](https://software.intel.com/sites/default/files/managed/f1/b8/intel-sgx-support-for-third-party-attestation.pdf)-based attestation.
 
 Documentation on ECDSA-based attestation is [split out into a separate document](README-ECDSA.html).
@@ -59,6 +61,15 @@ If you want to use SCONE and have access to their Docker images, edit the Docker
     docker build -t ratls-scone .
 
 ## Build Instructions
+
+Define the following environment variables. They are required to prepare the Graphene manifests
+before executing any enclave.
+
+```
+export RA_CLIENT_SPID     = 0123456789ABCDEF0123456789ABCDEF
+export RA_CLIENT_KEY      = CAFEBABE01234567CAFEBABE01234567
+export RA_CLIENT_LINKABLE = 0 or 1
+```
 
 The [build script](build.sh) creates executables based on either the Intel SGX SDK, Graphene, SCONE or SGX-LKL, depending on the first parameter
 

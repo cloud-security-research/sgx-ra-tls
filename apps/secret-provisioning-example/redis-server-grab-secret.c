@@ -17,8 +17,6 @@
 
 unsigned char secret[1024];
 
-extern struct ra_tls_options my_ra_tls_options;
-
 static
 void ssl_read_exactly_n_bytes(mbedtls_ssl_context* ssl, unsigned char* p, int len) {
     int bytes_read = 0;
@@ -58,11 +56,11 @@ int grab_secret_from_provisioning_service(int argc, char **argv, char **env) {
     mbedtls_ssl_config_init(&conf);
     mbedtls_ctr_drbg_init(&ctr_drbg);
     mbedtls_x509_crt_init(&srvcert);
-    
+
     /* Generate RA-TLS certificate and key. */
     mbedtls_x509_crt_init(&crt);
     mbedtls_pk_init(&key);
-    mbedtls_create_key_and_x509(&key, &crt, &my_ra_tls_options);
+    mbedtls_create_key_and_x509(&key, &crt, NULL);
 
     mbedtls_entropy_init(&entropy);
     assert(0 == mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func,
@@ -70,7 +68,7 @@ int grab_secret_from_provisioning_service(int argc, char **argv, char **env) {
                                       (const unsigned char*) personalize,
                                       strlen(personalize)));
 
-    
+
     assert(0 == mbedtls_net_connect(&srv_fd, "127.0.0.1",
                                     "12345", MBEDTLS_NET_PROTO_TCP));
 
@@ -78,7 +76,7 @@ int grab_secret_from_provisioning_service(int argc, char **argv, char **env) {
                                             MBEDTLS_SSL_IS_CLIENT,
                                             MBEDTLS_SSL_TRANSPORT_STREAM,
                                             MBEDTLS_SSL_PRESET_DEFAULT));
-    
+
     mbedtls_ssl_conf_authmode(&conf, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_rng(&conf, mbedtls_ctr_drbg_random, &ctr_drbg);
     /* mbedtls_ssl_conf_dbg(&conf, my_debug, stdout); */
@@ -86,7 +84,7 @@ int grab_secret_from_provisioning_service(int argc, char **argv, char **env) {
 
     mbedtls_ssl_conf_ca_chain(&conf, &srvcert, NULL);
     assert(0 == mbedtls_ssl_conf_own_cert(&conf, &crt, &key));
-        
+
     assert(0 == mbedtls_ssl_setup(&ssl, &conf));
     mbedtls_ssl_set_bio(&ssl, &srv_fd, mbedtls_net_send,
                         mbedtls_net_recv, NULL);
@@ -97,13 +95,12 @@ int grab_secret_from_provisioning_service(int argc, char **argv, char **env) {
                ret == MBEDTLS_ERR_SSL_WANT_WRITE);
     }
 
-    
     /* Grab secret from secret provisioning service. */
     int32_t secret_size;
     ssl_read_exactly_n_bytes(&ssl, (unsigned char*) &secret_size, sizeof(secret_size));
     assert(secret_size <= (int) sizeof(secret));
     ssl_read_exactly_n_bytes(&ssl, (unsigned char*) secret, secret_size);
-    
+
     printf(" > Provisioning successful. Secret is: %s\n", (char*)secret);
 
     /* Patch --requirepass command-line argument to point to obtained secret. */

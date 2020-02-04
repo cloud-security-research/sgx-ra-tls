@@ -36,3 +36,7 @@ sgx.trusted_files.libssl = file:deps/graphene/Runtime/libssl.so.1.0.0
 
 sgx.trusted_files.cacertificates = file:/etc/ssl/certs/ca-certificates.crt
 sgx.trusted_files.etcresolv = file:/etc/resolv.conf
+
+sgx.ra_client_spid = $(RA_CLIENT_SPID)
+sgx.ra_client_key  = $(RA_CLIENT_KEY)
+sgx.ra_client_linkable = $(RA_CLIENT_LINKABLE)

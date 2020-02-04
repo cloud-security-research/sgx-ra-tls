@@ -55,3 +55,7 @@ sgx.trusted_files.servicecrt = file:secret-provisioning-service-crt.pem
 
 sgx.trusted_files.cacertificates = file:/etc/ssl/certs/ca-certificates.crt
 sgx.trusted_files.resolvconf = file:/etc/resolv.conf
+
+sgx.ra_client_spid = $(RA_CLIENT_SPID)
+sgx.ra_client_key  = $(RA_CLIENT_KEY)
+sgx.ra_client_linkable = $(RA_CLIENT_LINKABLE)
