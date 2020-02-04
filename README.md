@@ -71,6 +71,13 @@ export RA_CLIENT_KEY      = CAFEBABE01234567CAFEBABE01234567
 export RA_CLIENT_LINKABLE = 0 or 1
 ```
 
+To use the Graphene attestation interface you must also use a specific version of Graphene supporting it. You can do so via two additional environment variables. For example
+
+```
+export GRAPHENE_URI=https://github.com/thomasknauth/graphene.git
+export GRAPHENE_COMMIT=attestation
+```
+
 The [build script](build.sh) creates executables based on either the Intel SGX SDK, Graphene, SCONE or SGX-LKL, depending on the first parameter
 
     ./build.sh sgxsdk|graphene|scone|sgxlkl

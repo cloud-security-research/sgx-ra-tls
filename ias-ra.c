@@ -186,7 +186,7 @@ void obtain_attestation_verification_report
     __UNUSED(opts);
 
     char ias_report[10*1024];
-    int fd = open("/proc/sgx_attestation/ias_report", O_RDONLY);
+    int fd = open("/sys/sgx_attestation/ias_report", O_RDONLY);
     if (fd < 0)
         abort();
     const ssize_t ias_report_len = read(fd, ias_report, sizeof(ias_report));
@@ -195,7 +195,7 @@ void obtain_attestation_verification_report
     close(fd);
 
     char ias_header[10*1024];
-    fd = open("/proc/sgx_attestation/ias_header", O_RDONLY);
+    fd = open("/sys/sgx_attestation/ias_header", O_RDONLY);
     if (fd < 0)
         abort();
     const ssize_t ias_header_len = read(fd, ias_header, sizeof(ias_header));

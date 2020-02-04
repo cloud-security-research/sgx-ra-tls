@@ -17,7 +17,7 @@ void do_remote_attestation(sgx_report_data_t* report_data, const struct ra_tls_o
 {
     (void) opts;
 
-    int fd = open("/proc/sgx_attestation/report_data", O_WRONLY);
+    int fd = open("/sys/sgx_attestation/report_data", O_WRONLY);
     if (fd < 0)
         abort();
     int rc = write(fd, report_data, sizeof(*report_data));
@@ -30,7 +30,7 @@ void do_remote_attestation(sgx_report_data_t* report_data, const struct ra_tls_o
 
 void ra_tls_create_report(sgx_report_t* report)
 {
-    int fd = open("/proc/sgx_attestation/report", O_RDONLY);
+    int fd = open("/sys/sgx_attestation/report", O_RDONLY);
     if (fd < 0)
         abort();
     int rc = read(fd, report, sizeof(*report));
