@@ -476,7 +476,8 @@ ifdef ECDSA
 # TODO merge FLC changes into Graphene master.
 GRAPHENE_COMMIT?=0bc6b460b8e516615658f682eeebc3e7af48f0a7
 else
-GRAPHENE_COMMIT?=ba169becae4846dbca76a41c91f785a80fe15e7e
+# Most recent Graphene commit at time of update.
+GRAPHENE_COMMIT?=ff8457f54e149565c3d97251eedc0d3348bae4e7
 endif
 GRAPHENE_URI?=https://github.com/oscarlab/graphene.git
 
