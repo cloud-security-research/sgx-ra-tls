@@ -73,5 +73,9 @@ class GrapheneSGXTestCase():
                 check_call(split('./' + client))
 
             self.server_process.terminate()
-            sleep(1)
-            assert self.server_process.poll() == 0
+            for i in range(5):
+                if self.server_process.poll():
+                    break
+                sleep(1)
+            sigterm = 15
+            assert self.server_process.poll() == sigterm
