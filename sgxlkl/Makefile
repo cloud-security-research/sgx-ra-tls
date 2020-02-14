@@ -53,15 +53,10 @@ deps/protobuf-c: | sgx-lkl
 	cd $@ && cp protobuf-c/.libs/libprotobuf-c.a ../../local/lib
 	cd $@ && cp protobuf-c/protobuf-c.h ../../local/include/protobuf-c
 
-wolfssl-2036.patch:
-	wget https://patch-diff.githubusercontent.com/raw/wolfSSL/wolfssl/pull/2036.diff -O $@
-
-deps/wolfssl: wolfssl-2036.patch | sgx-lkl
+deps/wolfssl: | sgx-lkl
 	mkdir -p deps && cd deps && git clone https://github.com/wolfSSL/wolfssl
 	cd $@ && git checkout 57e5648a5dd734d1c219d385705498ad12941dd0
-	cd $@ && patch -p1 < ../../../wolfssl-sgx-attestation.patch
-	cd $@ && patch -p1 < ../../../00-wolfssl-allow-large-certificate-request-msg.patch
-	cd $@ && patch -p1 < ../../wolfssl-2036.patch
+	cd $@ && patch -p1 < ../../../wolfssl.patch
 	cd $@ && ./autogen.sh
 	cd $@ && CC=$(MUSLCC) CFLAGS="-fPIC -DWOLFSSL_SGX_ATTESTATION -DWOLFSSL_ALWAYS_VERIFY_CB -DKEEP_PEER_CERT" ./configure --prefix=$(abspath local) --enable-writedup --enable-static --disable-shared --enable-keygen --enable-certgen --enable-certext --enable-tlsv10 # --enable-debug
 	cd $@ && $(MAKE) install
@@ -92,7 +87,7 @@ clean:
 .PHONY: distclean
 distclean:
 	$(RM) ldpreload.so
-	$(RM) -r sgx-lkl deps/zlib deps/curl deps/protobuf-c deps/wolfssl
+	$(RM) -r sgx-lkl deps/zlib deps/curl deps/protobuf-c deps/wolfssl local
 
 EXTERNAL_IFACE ?= eth0
 .PHONY: up-sgxlkl-network
