@@ -1,5 +1,7 @@
 # Introduction
 
+> :warning: **DISCONTINUATION OF PROJECT** - *This project will no longer be maintained by Intel.  Intel has ceased development and contributions including, but not limited to, maintenance, bug fixes, new releases, or updates, to this project.* **Intel no longer accepts patches to this project.**
+
 This project provides a proof-of-concept implementation on how to integrate Intel SGX remote attestation into the TLS connection setup. Conceptually, we extend the standard X.509 certificate with SGX-related information. The additional information allows the receiver of the certificate to verify that it is indeed communicating with an SGX enclave. The accompanying [white paper](whitepaper.pdf) "Integrating Remote Attestation with Transport Layer Security" provides more details. RA-TLS supports [EPID](https://software.intel.com/sites/default/files/managed/57/0e/ww10-2016-sgx-provisioning-and-attestation-final.pdf) and [ECDSA](https://software.intel.com/sites/default/files/managed/f1/b8/intel-sgx-support-for-third-party-attestation.pdf)-based attestation.
 
 Documentation on ECDSA-based attestation is [split out into a separate document](README-ECDSA.html).
